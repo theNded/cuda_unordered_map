@@ -401,3 +401,52 @@ public:
         return &slab_alloc_context_;
     }
 };
+
+// The custom allocator that is being used for this code:
+// this might need to be a template paramater itself
+namespace slab_alloc_par {
+constexpr uint32_t log_num_mem_blocks = 8;
+constexpr uint32_t num_super_blocks = 32;
+constexpr uint32_t num_replicas = 1;
+}  // namespace slab_alloc_par
+
+using DynamicAllocatorT = SlabAllocLight<slab_alloc_par::log_num_mem_blocks,
+                                         slab_alloc_par::num_super_blocks,
+                                         slab_alloc_par::num_replicas>;
+
+using AllocatorContextT =
+        SlabAllocLightContext<slab_alloc_par::log_num_mem_blocks,
+                              slab_alloc_par::num_super_blocks,
+                              slab_alloc_par::num_replicas>;
+
+using SlabAddressT = uint32_t;
+
+// only works with up to 32-bit key/values
+struct key_value_pair {
+    uint32_t key;
+    uint32_t value;
+};
+
+struct __align__(32) concurrent_slab {
+    static constexpr uint32_t NUM_ELEMENTS_PER_SLAB = 15u;
+    key_value_pair data[NUM_ELEMENTS_PER_SLAB];
+    uint32_t ptr_index[2];
+};
+
+// this slab structure is meant to be used in either concurrent sets,
+// or phase-concurrent maps.
+// | key 0 | key 1 | key 2 | ... | key 30 | next_ptr |
+struct __align__(32) key_only_slab {
+    static constexpr uint32_t NUM_ELEMENTS_PER_SLAB = 31u;
+    uint32_t keys[NUM_ELEMENTS_PER_SLAB];
+    uint32_t next_ptr_index[1];
+};
+
+struct __align__(32) phase_concurrent_slab {
+    static constexpr uint32_t NUM_ELEMENTS_PER_SLAB = 31u;
+    // main slab (128 bytes), contain keys
+    key_only_slab keys;
+
+    // value storage:
+    uint32_t values[NUM_ELEMENTS_PER_SLAB];
+};

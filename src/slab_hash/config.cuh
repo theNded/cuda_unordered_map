@@ -25,48 +25,7 @@ static constexpr uint64_t EMPTY_PAIR_64 = 0xFFFFFFFFFFFFFFFFLL;
 static constexpr uint32_t WARP_WIDTH = 32;
 static constexpr uint32_t SEARCH_NOT_FOUND = 0xFFFFFFFF;
 
-// only works with up to 32-bit key/values
-template <typename KeyT, typename ValueT>
-struct key_value_pair {
-    KeyT key;
-    ValueT value;
-};
-
-template <typename KeyT, typename ValueT>
-struct __align__(32) concurrent_slab {
-    static constexpr uint32_t NUM_ELEMENTS_PER_SLAB = 15u;
-    key_value_pair<KeyT, ValueT> data[NUM_ELEMENTS_PER_SLAB];
-    uint32_t ptr_index[2];
-};
-
-// this slab structure is meant to be used in either concurrent sets,
-// or phase-concurrent maps.
-// | key 0 | key 1 | key 2 | ... | key 30 | next_ptr |
-template <typename KeyT>
-struct __align__(32) key_only_slab {
-    static constexpr uint32_t NUM_ELEMENTS_PER_SLAB = 31u;
-    KeyT keys[NUM_ELEMENTS_PER_SLAB];
-    uint32_t next_ptr_index[1];
-};
-
-template <typename KeyT, typename ValueT>
-struct __align__(32) phase_concurrent_slab {
-    static constexpr uint32_t NUM_ELEMENTS_PER_SLAB = 31u;
-    // main slab (128 bytes), contain keys
-    key_only_slab<KeyT> keys;
-
-    // value storage:
-    ValueT values[NUM_ELEMENTS_PER_SLAB];
-};
-
-/*
- * Different types of slab hash:
- * 1. Concurrent map: it assumes that all operations can be performed
- * concurrently
- * 2. phase-concurrent map: supports concurrent updates, and concurrent
- * searches, but not a mixture of both
- */
-enum class SlabHashTypeT { ConcurrentMap, ConcurrentSet, PhaseConcurrentMap };
+enum class SlabHashTypeT { ConcurrentMap, ConcurrentSet };
 
 template <typename KeyT, typename ValueT>
 class ConcurrentMapT {
@@ -79,7 +38,7 @@ public:
     static constexpr uint32_t REGULAR_NODE_DATA_MASK = 0x3FFFFFFF;
     static constexpr uint32_t REGULAR_NODE_KEY_MASK = 0x15555555;
 
-    using SlabTypeT = concurrent_slab<KeyT, ValueT>;
+    using SlabTypeT = concurrent_slab;
 
     static std::string getTypeName() { return std::string("ConcurrentMap"); }
 };
@@ -96,7 +55,7 @@ public:
     static constexpr uint32_t REGULAR_NODE_KEY_MASK = 0x7FFFFFFF;
     static constexpr uint32_t NEXT_PTR_LANE = 31u;
 
-    using SlabTypeT = key_only_slab<KeyT>;
+    using SlabTypeT = key_only_slab;
 
     static std::string getTypeName() { return std::string("ConcurrentSet"); }
 };
@@ -108,22 +67,4 @@ class GpuSlabHash;
 template <typename KeyT, typename ValueT, SlabHashTypeT SlabHashT>
 class GpuSlabHashContext;
 
-// The custom allocator that is being used for this code:
-// this might need to be a template paramater itself
-namespace slab_alloc_par {
-constexpr uint32_t log_num_mem_blocks = 8;
-constexpr uint32_t num_super_blocks = 32;
-constexpr uint32_t num_replicas = 1;
-}  // namespace slab_alloc_par
-
-using DynamicAllocatorT = SlabAllocLight<slab_alloc_par::log_num_mem_blocks,
-                                         slab_alloc_par::num_super_blocks,
-                                         slab_alloc_par::num_replicas>;
-
-using AllocatorContextT =
-        SlabAllocLightContext<slab_alloc_par::log_num_mem_blocks,
-                              slab_alloc_par::num_super_blocks,
-                              slab_alloc_par::num_replicas>;
-
-using SlabAddressT = uint32_t;
 using BucketAddressT = SlabAddressT;

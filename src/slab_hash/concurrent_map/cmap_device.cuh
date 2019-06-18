@@ -48,8 +48,9 @@ GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::searchKey(
                         ? *(getPointerFromBucket(src_bucket, laneId))
                         : *(getPointerFromSlab(next, laneId));
 
-        int32_t found_lane = SlabHash_NS::findKeyPerWarp<KeyT, SlabHashT>(
-                wanted_key, src_unit_data);
+        int32_t found_lane =
+                SlabHash_NS::findKeyPerWarp<KeyT, SlabHashT>(
+                        wanted_key, src_unit_data);
 
         if (found_lane < 0) {  // not found
             uint32_t next_ptr = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
