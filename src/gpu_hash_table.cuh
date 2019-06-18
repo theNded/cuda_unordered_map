@@ -89,7 +89,7 @@ public:
         CHECK_CUDA(cudaFree(d_result_));
     }
 
-    float hash_build(KeyT* h_key, ValueT* h_value, uint32_t num_keys) {
+    float Insert(KeyT* h_key, ValueT* h_value, uint32_t num_keys) {
         // moving key-values to the device:
         CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
         CHECK_CUDA(cudaMemcpy(d_key_, h_key, sizeof(KeyT) * num_keys,
@@ -119,7 +119,7 @@ public:
         return temp_time;
     }
 
-    float hash_search(KeyT* h_query, ValueT* h_result, uint32_t num_queries) {
+    float Search(KeyT* h_query, ValueT* h_result, uint32_t num_queries) {
         CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
         CHECK_CUDA(cudaMemcpy(d_query_, h_query, sizeof(KeyT) * num_queries,
                               cudaMemcpyHostToDevice));
@@ -149,7 +149,7 @@ public:
         return temp_time;
     }
 
-    float hash_delete(KeyT* h_key, uint32_t num_keys) {
+    float Delete(KeyT* h_key, uint32_t num_keys) {
         CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
         CHECK_CUDA(cudaMemcpy(d_key_, h_key, sizeof(KeyT) * num_keys,
                               cudaMemcpyHostToDevice));

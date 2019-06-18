@@ -38,25 +38,23 @@ int main(int argc, char** argv) {
     }
     printf("Device: %s\n", devProp.name);
 
-    //======================================
-    // Building my hash table:
-    //======================================
+    /** Hash table meta data **/
     uint32_t num_keys = 1 << 20;
 
     float expected_chain = 0.6f;
-    uint32_t num_elements_per_unit = 15;
-    uint32_t expected_elements_per_bucket =
-            expected_chain * num_elements_per_unit;
-    uint32_t num_buckets = (num_keys + expected_elements_per_bucket - 1) /
-                           expected_elements_per_bucket;
+    uint32_t num_elems_per_bucket = 100;
+    uint32_t expected_elems_per_bucket = expected_chain * num_elems_per_bucket;
+    uint32_t num_buckets = (num_keys + expected_elems_per_bucket - 1) /
+                           expected_elems_per_bucket;
 
-    // ==== generating key-values and queries on the host:
-    float existing_ratio = 1.0f;  // ratio of queries within the table
+    /** Generate key-value pairs for building **/
+    float existing_ratio = 0.6f;  // ratio of queries within the table
     uint32_t num_queries = num_keys;
+    auto num_elements = 2 * num_keys;
 
     using KeyT = uint32_t;
     using ValueT = uint32_t;
-    auto num_elements = 2 * num_keys;
+    const auto f = [](const KeyT& key) { return key * 10; };
 
     std::vector<KeyT> h_key(num_elements);
     std::vector<ValueT> h_value(num_elements);
@@ -64,10 +62,6 @@ int main(int argc, char** argv) {
     std::vector<ValueT> h_result_gt(num_queries);
     std::vector<ValueT> h_result(num_queries);
 
-    // std::iota(h_key.begin(), h_key.end(), 0);
-    const auto f = [](const KeyT& key) { return key * 10; };
-
-    std::random_device rd;
     const int64_t seed = 1;
     std::mt19937 rng(seed);
     std::vector<uint32_t> index(num_elements);
@@ -79,7 +73,7 @@ int main(int argc, char** argv) {
         h_value[i] = f(h_key[i]);
     }
 
-    //=== generating random queries with a fixed ratio existing in keys
+    /** Generate key-value pairs for query **/
     uint32_t num_existing = static_cast<uint32_t>(existing_ratio * num_queries);
 
     for (int i = 0; i < num_existing; i++) {
@@ -91,7 +85,8 @@ int main(int argc, char** argv) {
         h_query[num_existing + i] = h_key[num_keys + i];
         h_result_gt[num_existing + i] = SEARCH_NOT_FOUND;
     }
-    // permuting the queries:
+
+    /* shuffle */
     std::vector<int> q_index(num_queries);
     std::iota(q_index.begin(), q_index.end(), 0);
     std::shuffle(q_index.begin(), q_index.end(), rng);
@@ -99,13 +94,14 @@ int main(int argc, char** argv) {
         std::swap(h_query[i], h_query[q_index[i]]);
         std::swap(h_result_gt[i], h_result_gt[q_index[i]]);
     }
-    GpuHashTable<KeyT, ValueT> hash_table(
-            num_keys, num_buckets, DEVICE_ID, seed);
+
+    /** Instantiate hash table **/
+    GpuHashTable<KeyT, ValueT> hash_table(num_keys, num_buckets, 0, seed);
 
     float build_time =
-            hash_table.hash_build(h_key.data(), h_value.data(), num_keys);
-    float search_time = hash_table.hash_search(
-            h_query.data(), h_result.data(), num_queries);
+            hash_table.Insert(h_key.data(), h_value.data(), num_keys);
+    float search_time = hash_table.Search(h_query.data(), h_result.data(),
+                                               num_queries);
     // ==== validation:
     for (int i = 0; i < num_queries; i++) {
         if (h_result_gt[i] != h_result[i]) {
@@ -116,7 +112,6 @@ int main(int argc, char** argv) {
         if (i == (num_queries - 1)) printf("Validation done successfully\n");
     }
 
-    // // hash_table.print_bucket(0);
     printf("Hash table: \n");
     printf("num_keys = %d, num_buckets = %d\n", num_keys, num_buckets);
     printf("\t2) Hash table built in %.3f ms (%.3f M elements/s)\n", build_time,

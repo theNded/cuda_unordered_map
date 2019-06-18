@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
             num_keys, num_buckets, DEVICE_ID, seed, false,
             /*identity_hash*/ true);
 
-    float build_time = hash_table.hash_build(h_key.data(), nullptr, num_keys);
+    float build_time = hash_table.Insert(h_key.data(), nullptr, num_keys);
 
     const uint32_t num_blocks = 1;
     const uint32_t num_threads = 128;

@@ -95,7 +95,7 @@ void load_factor_bulk_experiment(uint32_t num_keys,
             // cudpp_hash_table cudpp_hash(h_key, h_value, num_keys,
             // num_queries,
             //                             load_factor, false, false);
-            // float cudpp_build_time = cudpp_hash.hash_build();
+            // float cudpp_build_time = cudpp_hash.Insert();
         }
 
         // === generating random queries with a fixed ratio existing in keys
@@ -121,7 +121,7 @@ void load_factor_bulk_experiment(uint32_t num_keys,
             GpuHashTable<KeyT, ValueT> hash_table(num_keys, num_buckets,
                                                   device_idx, time(nullptr));
 
-            build_time += hash_table.hash_build(h_key, h_value, num_keys);
+            build_time += hash_table.Insert(h_key, h_value, num_keys);
 
             // measuring the exact load factor in slab hash
             load_factor += hash_table.measureLoadFactor();
@@ -135,7 +135,7 @@ void load_factor_bulk_experiment(uint32_t num_keys,
             }
             // performing the queries:
             search_time +=
-                    hash_table.hash_search(h_query, h_result, num_queries);
+                    hash_table.Search(h_query, h_result, num_queries);
 
             // CUDPP hash table:
             if (run_cudpp) {
@@ -270,13 +270,13 @@ void singleton_experiment(uint32_t num_keys,
         GpuHashTable<KeyT, ValueT> hash_table(num_keys, num_buckets, device_idx,
                                               time(nullptr));
 
-        build_time += hash_table.hash_build(h_key, h_value, num_keys);
+        build_time += hash_table.Insert(h_key, h_value, num_keys);
 
         // measuring the exact load factor in slab hash
         load_factor += hash_table.measureLoadFactor();
 
         // performing the queries:
-        search_time += hash_table.hash_search(h_query, h_result, num_queries);
+        search_time += hash_table.Search(h_query, h_result, num_queries);
 
         // CUDPP hash table:
         if (run_cudpp) {
@@ -434,7 +434,7 @@ void build_search_bulk_experiment(uint32_t num_keys_start,
             GpuHashTable<KeyT, ValueT> hash_table(num_keys, num_buckets,
                                                   device_idx, time(nullptr));
 
-            build_time += hash_table.hash_build(h_key, h_value, num_keys);
+            build_time += hash_table.Insert(h_key, h_value, num_keys);
 
             // measuring the exact load factor in slab hash
             double load_factor = hash_table.measureLoadFactor();
@@ -444,16 +444,16 @@ void build_search_bulk_experiment(uint32_t num_keys_start,
             // cudpp_hash_table cudpp_hash(h_key, h_value, num_keys,
             // num_queries,
             //                             load_factor, false, false);
-            // cudpp_build_time += cudpp_hash.hash_build();
+            // cudpp_build_time += cudpp_hash.Insert();
 
             // performing the queries:
             // individual implementation:
             search_time +=
-                    hash_table.hash_search(h_query, h_result, num_queries);
+                    hash_table.Search(h_query, h_result, num_queries);
 
             // bulk implementation:
             search_time_bulk +=
-                    hash_table.hash_search_bulk(h_query, h_result, num_queries);
+                    hash_table.Search_bulk(h_query, h_result, num_queries);
 
             // CUDPP hash table:
             // cudpp_search_time += cudpp_hash.lookup_hash_table(h_query,
