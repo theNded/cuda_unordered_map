@@ -23,7 +23,7 @@
 #include <random>
 #include <vector>
 #include "gpu_hash_table.cuh"
-#include "slab_hash_instantiate.cuh"
+
 //=======================================
 #define DEVICE_ID 0
 //=======================================

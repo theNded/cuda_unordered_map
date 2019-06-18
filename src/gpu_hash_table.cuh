@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "slab_hash_instantiate.cuh"
+#include "slab_hash/instantiate.cuh"
 
 /*
  * This class acts as a helper class to simplify simulations around different
@@ -73,10 +73,8 @@ public:
             CHECK_CUDA(
                     cudaMalloc((void**)&d_value_, sizeof(ValueT) * max_keys_));
         }
-        CHECK_CUDA(
-                cudaMalloc((void**)&d_query_, sizeof(KeyT) * max_keys_));
-        CHECK_CUDA(
-                cudaMalloc((void**)&d_result_, sizeof(ValueT) * max_keys_));
+        CHECK_CUDA(cudaMalloc((void**)&d_query_, sizeof(KeyT) * max_keys_));
+        CHECK_CUDA(cudaMalloc((void**)&d_result_, sizeof(ValueT) * max_keys_));
 
         // allocate an initialize the allocator:
         dynamic_allocator_ = new DynamicAllocatorT();
@@ -110,11 +108,10 @@ public:
         // moving key-values to the device:
         CHECK_CUDA(cudaSetDevice(device_idx_));
         CHECK_CUDA(cudaMemcpy(d_key_, h_key, sizeof(KeyT) * num_keys,
-                                    cudaMemcpyHostToDevice));
+                              cudaMemcpyHostToDevice));
         if (req_values_) {
-            CHECK_CUDA(cudaMemcpy(d_value_, h_value,
-                                        sizeof(ValueT) * num_keys,
-                                        cudaMemcpyHostToDevice));
+            CHECK_CUDA(cudaMemcpy(d_value_, h_value, sizeof(ValueT) * num_keys,
+                                  cudaMemcpyHostToDevice));
         }
 
         float temp_time = 0.0f;
@@ -139,11 +136,9 @@ public:
 
     float hash_search(KeyT* h_query, ValueT* h_result, uint32_t num_queries) {
         CHECK_CUDA(cudaSetDevice(device_idx_));
-        CHECK_CUDA(cudaMemcpy(d_query_, h_query,
-                                    sizeof(KeyT) * num_queries,
-                                    cudaMemcpyHostToDevice));
-        CHECK_CUDA(
-                cudaMemset(d_result_, 0xFF, sizeof(ValueT) * num_queries));
+        CHECK_CUDA(cudaMemcpy(d_query_, h_query, sizeof(KeyT) * num_queries,
+                              cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemset(d_result_, 0xFF, sizeof(ValueT) * num_queries));
 
         float temp_time = 0.0f;
 
@@ -163,9 +158,8 @@ public:
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
 
-        CHECK_CUDA(cudaMemcpy(h_result, d_result_,
-                                    sizeof(ValueT) * num_queries,
-                                    cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(h_result, d_result_, sizeof(ValueT) * num_queries,
+                              cudaMemcpyDeviceToHost));
         cudaDeviceSynchronize();
         return temp_time;
     }
@@ -173,11 +167,9 @@ public:
                            ValueT* h_result,
                            uint32_t num_queries) {
         CHECK_CUDA(cudaSetDevice(device_idx_));
-        CHECK_CUDA(cudaMemcpy(d_query_, h_query,
-                                    sizeof(KeyT) * num_queries,
-                                    cudaMemcpyHostToDevice));
-        CHECK_CUDA(
-                cudaMemset(d_result_, 0xFF, sizeof(ValueT) * num_queries));
+        CHECK_CUDA(cudaMemcpy(d_query_, h_query, sizeof(KeyT) * num_queries,
+                              cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemset(d_result_, 0xFF, sizeof(ValueT) * num_queries));
 
         float temp_time = 0.0f;
 
@@ -197,9 +189,8 @@ public:
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
 
-        CHECK_CUDA(cudaMemcpy(h_result, d_result_,
-                                    sizeof(ValueT) * num_queries,
-                                    cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(h_result, d_result_, sizeof(ValueT) * num_queries,
+                              cudaMemcpyDeviceToHost));
         cudaDeviceSynchronize();
         return temp_time;
     }
@@ -207,7 +198,7 @@ public:
     float hash_delete(KeyT* h_key, uint32_t num_keys) {
         CHECK_CUDA(cudaSetDevice(device_idx_));
         CHECK_CUDA(cudaMemcpy(d_key_, h_key, sizeof(KeyT) * num_keys,
-                                    cudaMemcpyHostToDevice));
+                              cudaMemcpyHostToDevice));
 
         float temp_time = 0.0f;
 
@@ -234,10 +225,10 @@ public:
                              uint32_t batch_id) {
         CHECK_CUDA(cudaSetDevice(device_idx_));
         CHECK_CUDA(cudaMemcpy(d_key_ + batch_id * batch_size, h_batch_op,
-                                    sizeof(uint32_t) * batch_size,
-                                    cudaMemcpyHostToDevice));
+                              sizeof(uint32_t) * batch_size,
+                              cudaMemcpyHostToDevice));
         CHECK_CUDA(cudaMemset(d_result_ + batch_id * batch_size, 0xFF,
-                                    sizeof(uint32_t) * batch_size));
+                              sizeof(uint32_t) * batch_size));
 
         float temp_time = 0.0f;
 
@@ -256,9 +247,9 @@ public:
         cudaEventDestroy(stop);
 
         CHECK_CUDA(cudaMemcpy(h_results + batch_id * batch_size,
-                               d_result_ + batch_id * batch_size,
-                               sizeof(uint32_t) * batch_size,
-                               cudaMemcpyDeviceToHost));
+                              d_result_ + batch_id * batch_size,
+                              sizeof(uint32_t) * batch_size,
+                              cudaMemcpyDeviceToHost));
         cudaDeviceSynchronize();
         return temp_time;
     }

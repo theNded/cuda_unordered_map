@@ -89,18 +89,17 @@ GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::computeLoadFactor(
     uint32_t* h_bucket_count = new uint32_t[num_buckets_];
     uint32_t* d_bucket_count;
     CHECK_CUDA(cudaMalloc((void**)&d_bucket_count,
-                                sizeof(uint32_t) * num_buckets_));
-    CHECK_CUDA(
-            cudaMemset(d_bucket_count, 0, sizeof(uint32_t) * num_buckets_));
+                          sizeof(uint32_t) * num_buckets_));
+    CHECK_CUDA(cudaMemset(d_bucket_count, 0, sizeof(uint32_t) * num_buckets_));
 
     const auto& dynamic_alloc = gpu_context_.getAllocatorContext();
     const uint32_t num_super_blocks = dynamic_alloc.num_super_blocks_;
     uint32_t* h_count_super_blocks = new uint32_t[num_super_blocks];
     uint32_t* d_count_super_blocks;
     CHECK_CUDA(cudaMalloc((void**)&d_count_super_blocks,
-                                sizeof(uint32_t) * num_super_blocks));
+                          sizeof(uint32_t) * num_super_blocks));
     CHECK_CUDA(cudaMemset(d_count_super_blocks, 0,
-                                sizeof(uint32_t) * num_super_blocks));
+                          sizeof(uint32_t) * num_super_blocks));
     //---------------------------------
     // counting the number of inserted elements:
     const uint32_t blocksize = 128;
@@ -108,8 +107,8 @@ GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::computeLoadFactor(
     bucket_count_kernel<KeyT, ValueT><<<num_blocks, blocksize>>>(
             gpu_context_, d_bucket_count, num_buckets_);
     CHECK_CUDA(cudaMemcpy(h_bucket_count, d_bucket_count,
-                                sizeof(uint32_t) * num_buckets_,
-                                cudaMemcpyDeviceToHost));
+                          sizeof(uint32_t) * num_buckets_,
+                          cudaMemcpyDeviceToHost));
 
     int total_elements_stored = 0;
     for (int i = 0; i < num_buckets_; i++)
@@ -128,8 +127,8 @@ GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::computeLoadFactor(
             d_count_super_blocks, gpu_context_);
 
     CHECK_CUDA(cudaMemcpy(h_count_super_blocks, d_count_super_blocks,
-                                sizeof(uint32_t) * num_super_blocks,
-                                cudaMemcpyDeviceToHost));
+                          sizeof(uint32_t) * num_super_blocks,
+                          cudaMemcpyDeviceToHost));
 
     // printing stats per super block:
     if (flag == 1) {

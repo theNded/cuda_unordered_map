@@ -22,24 +22,24 @@
 #include <typeinfo>
 
 // global declarations
-#include "slab_hash_config.cuh"
+#include "config.cuh"
 
 // global helper methods:
-#include "helper_cuda.h"
+#include "helper/helper_cuda.h"
 #include "helper_warp.cuh"
 
 // class declaration:
-#include "slab_iterator.cuh"
-#include "concurrent_map/cmap.cuh"
-#include "concurrent_set/cset.cuh"
+#include "iterator.cuh"
+#include "slab_hash/concurrent_map/cmap.cuh"
+#include "slab_hash/concurrent_set/cset.cuh"
 
 // warp implementations of member functions:
-#include "concurrent_map/cmap_device.cuh"
-#include "concurrent_set/cset_device.cuh"
+#include "slab_hash/concurrent_map/cmap_device.cuh"
+#include "slab_hash/concurrent_set/cset_device.cuh"
 
-#include "concurrent_map/cmap_kernel.cuh"
-#include "concurrent_set/cset_kernel.cuh"
+#include "slab_hash/concurrent_map/cmap_kernel.cuh"
+#include "slab_hash/concurrent_set/cset_kernel.cuh"
 
 // implementations:
-#include "concurrent_map/cmap_host.cuh"
-#include "concurrent_set/cset_host.cuh"
+#include "slab_hash/concurrent_map/cmap_host.cuh"
+#include "slab_hash/concurrent_set/cset_host.cuh"

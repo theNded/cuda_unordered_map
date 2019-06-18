@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "slab_alloc.cuh"
+#include "slab_alloc/slab_alloc.cuh"
 
 // internal parameters for slab hash device functions:
 static constexpr uint32_t EMPTY_KEY = 0xFFFFFFFF;

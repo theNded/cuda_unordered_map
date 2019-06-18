@@ -17,7 +17,7 @@
 #pragma once
 #include <stdint.h>
 #include <iostream>
-#include "helper_cuda.h"
+#include "helper/helper_cuda.h"
 
 using SlabAllocAddressT = uint32_t;
 
@@ -355,9 +355,9 @@ public:
         // In the light version, we put num_super_blocks super blocks within a
         // single array
         CHECK_CUDA(cudaMalloc((void**)&d_super_blocks_,
-                               slab_alloc_context_.SUPER_BLOCK_SIZE_ *
-                                       slab_alloc_context_.num_super_blocks_ *
-                                       sizeof(uint32_t)));
+                              slab_alloc_context_.SUPER_BLOCK_SIZE_ *
+                                      slab_alloc_context_.num_super_blocks_ *
+                                      sizeof(uint32_t)));
 
         for (int i = 0; i < slab_alloc_context_.num_super_blocks_; i++) {
             // setting bitmaps into zeros:
