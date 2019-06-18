@@ -78,11 +78,23 @@ GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentSet>::insertKey(
         old_key = atomicCAS((unsigned int*)p, EMPTY_KEY,
                             *reinterpret_cast<const uint32_t*>(
                                 reinterpret_cast<const unsigned char*>(&myKey)));
+        // TODO:
+//        key_addr = memory_heap.push(myKey);
+//        old_key_addr = atomicCAS((unsigned int*)p, EMPTY_KEY,
+//                            *reinterpret_cast<const uint32_t*>(
+//                                    reinterpret_cast<const unsigned char*>(&key_addr)));
+//        if (old_key == EMPTY_KEY) {
+//            to_be_inserted = false;
+//        } else /* (old_key == some other key's index) */{
+//            freeIndex(key_addr);
+//        }
+
         if ((old_key == EMPTY_KEY) || (old_key == src_key)) {
           to_be_inserted = false;  // succesful insertion
         }
       }
     }
+
     last_work_queue = work_queue;
   }
 }

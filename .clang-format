@@ -1,6 +1,10 @@
-BasedOnStyle:  Chromium
-BinPackArguments: false
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 80
+UseTab: Never
+Language: Cpp
+Standard: Cpp11
+ContinuationIndentWidth: 8
+AccessModifierOffset: -4
 BinPackParameters: false
-ColumnLimit:     90
-IndentWidth:     2
-BreakConstructorInitializers: BeforeComma
+SortIncludes: true

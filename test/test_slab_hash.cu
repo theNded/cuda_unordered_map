@@ -20,7 +20,7 @@
 #include <iostream>
 #include "gpu_hash_table.cuh"
 #include "slab_alloc.cuh"
-#include "slab_hash.cuh"
+#include "slab_hash_instantiate.cuh"
 #define DEVICE_ID 0
 
 int main(int argc, char** argv) {

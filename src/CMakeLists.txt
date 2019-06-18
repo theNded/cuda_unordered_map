@@ -1,6 +1,6 @@
 set(CUHFILES
-	slab_hash_global.cuh
-	slab_hash.cuh)
+        slab_hash_config.cuh
+        slab_hash_instantiate.cuh)
 
 cuda_add_library(slab_hash STATIC
 	${CUHFILES}

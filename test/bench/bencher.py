@@ -143,12 +143,12 @@ def main(argv):
 	# if the input file is not given, proper experiments should be run first
 	if not input_file:		
 		# == creating a folder to store results
-		out_directory = "../build/bench_result/"
+		out_directory = "../../build/bench_result/"
 		if (not os.path.isdir(out_directory)):
 			os.mkdir(out_directory)
 
 		# == running benchmark files
-		bin_file = "../build/bin/benchmark"
+		bin_file = "../../build/bin/benchmark"
 		if(not os.path.exists(bin_file)):
 			raise Exception("binary file " + bin_file + " not found!")
 

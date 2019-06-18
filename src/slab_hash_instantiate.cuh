@@ -22,30 +22,24 @@
 #include <typeinfo>
 
 // global declarations
-#include "slab_hash_global.cuh"
+#include "slab_hash_config.cuh"
 
 // global helper methods:
-#include "slab_hash_helper_methods.cuh"
+#include "helper_cuda.h"
+#include "helper_warp.cuh"
 
 // class declaration:
-#include "concurrent_map/cmap_class.cuh"
-#include "concurrent_set/cset_class.cuh"
 #include "slab_iterator.cuh"
+#include "concurrent_map/cmap.cuh"
+#include "concurrent_set/cset.cuh"
 
 // warp implementations of member functions:
-#include "concurrent_map/warp/delete.cuh"
-#include "concurrent_map/warp/insert.cuh"
-#include "concurrent_map/warp/search.cuh"
-#include "concurrent_set/cset_warp_operations.cuh"
+#include "concurrent_map/cmap_device.cuh"
+#include "concurrent_set/cset_device.cuh"
 
-// helper kernels:
-#include "concurrent_map/device/build.cuh"
-#include "concurrent_map/device/delete_kernel.cuh"
-#include "concurrent_map/device/misc_kernels.cuh"
-#include "concurrent_map/device/search_kernel.cuh"
-#include "concurrent_map/device/concurrent_kernel.cuh"
-#include "concurrent_set/cset_helper_kernels.cuh"
+#include "concurrent_map/cmap_kernel.cuh"
+#include "concurrent_set/cset_kernel.cuh"
 
 // implementations:
-#include "concurrent_map/cmap_implementation.cuh"
-#include "concurrent_set/cset_implementation.cuh" 
+#include "concurrent_map/cmap_host.cuh"
+#include "concurrent_set/cset_host.cuh"
