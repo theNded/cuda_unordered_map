@@ -90,14 +90,6 @@ public:
                                               ValueT& myValue,
                                               const uint32_t bucket_id);
 
-    // threads in a warp cooperate with each other to search for keys.
-    // the main difference with above function is that it is assumed all
-    // threads have something to search for
-    __device__ __forceinline__ void searchKeyBulk(const uint32_t& laneId,
-                                                  const KeyT& myKey,
-                                                  ValueT& myValue,
-                                                  const uint32_t bucket_id);
-
     // all threads within a warp cooperate with each other to delete
     // keys
     __device__ __forceinline__ void deleteKey(bool& to_be_deleted,

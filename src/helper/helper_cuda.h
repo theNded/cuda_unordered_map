@@ -16,8 +16,6 @@
 
 #pragma once
 
-#include <random>
-#include <iostream>
 #include <stdio.h>
 
 #define CHECK_CUDA(call)                                     \

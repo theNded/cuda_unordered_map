@@ -163,37 +163,6 @@ public:
         cudaDeviceSynchronize();
         return temp_time;
     }
-    float hash_search_bulk(KeyT* h_query,
-                           ValueT* h_result,
-                           uint32_t num_queries) {
-        CHECK_CUDA(cudaSetDevice(device_idx_));
-        CHECK_CUDA(cudaMemcpy(d_query_, h_query, sizeof(KeyT) * num_queries,
-                              cudaMemcpyHostToDevice));
-        CHECK_CUDA(cudaMemset(d_result_, 0xFF, sizeof(ValueT) * num_queries));
-
-        float temp_time = 0.0f;
-
-        cudaEvent_t start, stop;
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-        cudaEventRecord(start, 0);
-
-        //== slab hash's bulk search:
-        slab_hash_->searchBulk(d_query_, d_result_, num_queries);
-        //==
-
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&temp_time, start, stop);
-
-        cudaEventDestroy(start);
-        cudaEventDestroy(stop);
-
-        CHECK_CUDA(cudaMemcpy(h_result, d_result_, sizeof(ValueT) * num_queries,
-                              cudaMemcpyDeviceToHost));
-        cudaDeviceSynchronize();
-        return temp_time;
-    }
 
     float hash_delete(KeyT* h_key, uint32_t num_keys) {
         CHECK_CUDA(cudaSetDevice(device_idx_));

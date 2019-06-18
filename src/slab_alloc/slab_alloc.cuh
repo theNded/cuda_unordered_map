@@ -15,6 +15,7 @@
  */
 
 #pragma once
+
 #include <stdint.h>
 #include <iostream>
 #include "helper/helper_cuda.h"

@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
     std::vector<KeyT> h_key(num_elements);
     std::vector<ValueT> h_value(num_elements);
     std::vector<KeyT> h_query(num_queries);
-    std::vector<ValueT> h_correct_result(num_queries);
+    std::vector<ValueT> h_result_gt(num_queries);
     std::vector<ValueT> h_result(num_queries);
 
     // std::iota(h_key.begin(), h_key.end(), 0);
@@ -84,12 +84,12 @@ int main(int argc, char** argv) {
 
     for (int i = 0; i < num_existing; i++) {
         h_query[i] = h_key[num_keys - 1 - i];
-        h_correct_result[i] = f(h_query[i]);
+        h_result_gt[i] = f(h_query[i]);
     }
 
     for (int i = 0; i < (num_queries - num_existing); i++) {
         h_query[num_existing + i] = h_key[num_keys + i];
-        h_correct_result[num_existing + i] = SEARCH_NOT_FOUND;
+        h_result_gt[num_existing + i] = SEARCH_NOT_FOUND;
     }
     // permuting the queries:
     std::vector<int> q_index(num_queries);
@@ -97,17 +97,25 @@ int main(int argc, char** argv) {
     std::shuffle(q_index.begin(), q_index.end(), rng);
     for (int i = 0; i < num_queries; i++) {
         std::swap(h_query[i], h_query[q_index[i]]);
-        std::swap(h_correct_result[i], h_correct_result[q_index[i]]);
+        std::swap(h_result_gt[i], h_result_gt[q_index[i]]);
     }
     gpu_hash_table<KeyT, ValueT, SlabHashTypeT::ConcurrentMap> hash_table(
             num_keys, num_buckets, DEVICE_ID, seed);
 
     float build_time =
             hash_table.hash_build(h_key.data(), h_value.data(), num_keys);
-    float search_time = hash_table.hash_search(h_query.data(), h_result.data(),
-                                               num_queries);
-    float search_time_bulk = hash_table.hash_search_bulk(
+    float search_time = hash_table.hash_search(
             h_query.data(), h_result.data(), num_queries);
+    // ==== validation:
+    for (int i = 0; i < num_queries; i++) {
+        if (h_result_gt[i] != h_result[i]) {
+            printf("### wrong result at index %d: [%d] -> %d, but should be "
+                   "%d\n",
+                   i, h_query[i], h_result[i], h_result_gt[i]);
+        }
+        if (i == (num_queries - 1)) printf("Validation done successfully\n");
+    }
+
     // // hash_table.print_bucket(0);
     printf("Hash table: \n");
     printf("num_keys = %d, num_buckets = %d\n", num_keys, num_buckets);
@@ -116,36 +124,10 @@ int main(int argc, char** argv) {
     printf("\t3) Hash table search (%.2f) in %.3f ms (%.3f M queries/s)\n",
            existing_ratio, search_time,
            double(num_queries) / search_time / 1000.0);
-    printf("\t4) Hash table bulk search (%.2f) in %.3f ms (%.3f Mqueries/s)\n",
-           existing_ratio, search_time_bulk,
-           double(num_queries) / search_time_bulk / 1000.0);
-
     double load_factor = hash_table.measureLoadFactor();
 
     printf("The load factor is %.2f, number of buckets %d\n", load_factor,
            num_buckets);
 
-    // ==== validation:
-    for (int i = 0; i < num_queries; i++) {
-        if (h_correct_result[i] != h_result[i]) {
-            printf("### wrong result at index %d: [%d] -> %d, but should be "
-                   "%d\n",
-                   i, h_query[i], h_result[i], h_correct_result[i]);
-            break;
-        }
-        if (i == (num_queries - 1)) printf("Validation done successfully\n");
-    }
-
-    //	=== building cudpp for comparison
-    // float load_factor_cudpp = 0.8f;
-    // cudpp_hash_table cudpp_hash(h_key, h_value, num_keys, num_queries,
-    // load_factor_cudpp, false, false); float cudpp_build_time =
-    // cudpp_hash.hash_build(); float cudpp_search_time =
-    // cudpp_hash.lookup_hash_table(h_query, num_queries); printf(" CUDPP Hash
-    // table: \n"); printf("\t1) Hash table built in %.3f ms (%.3f M
-    // elements/s)\n", cudpp_build_time,
-    // double(num_keys)/cudpp_build_time/1000.0); printf("\t2) Hash table search
-    // (%.2f) in %.3f ms (%.3f M elements/s)\n", existing_ratio,
-    // cudpp_search_time, double(num_queries)/cudpp_search_time/1000.0);
-    //	===
+    return 0;
 }

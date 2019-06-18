@@ -88,13 +88,6 @@ public:
                                               const KeyT& myKey,
                                               const uint32_t bucket_id);
 
-    // threads in a warp cooperate with each other to search for keys.
-    // the main difference with above function is that it is assumed all
-    // threads have something to search for (no to_be_searched argument)
-    __device__ __forceinline__ bool searchKeyBulk(const uint32_t& laneId,
-                                                  const KeyT& myKey,
-                                                  const uint32_t bucket_id);
-
     __device__ __forceinline__ uint32_t* getPointerFromSlab(
             const SlabAddressT& slab_address, const uint32_t laneId) {
         return dynamic_allocator_.getPointerFromSlab(slab_address, laneId);

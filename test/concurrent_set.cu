@@ -99,9 +99,6 @@ int main(int argc, char** argv) {
     float build_time = hash_table.hash_build(h_key.data(), nullptr, num_keys);
     float search_time = hash_table.hash_search(h_query.data(), h_result.data(),
                                                num_queries);
-    // float search_time_bulk =
-    //     hash_table.hash_search_bulk(h_query.data(), h_result.data(),
-    //     num_queries);
     // // // hash_table.print_bucket(0);
     // printf("Hash table: \n");
     // printf("num_keys = %d, num_buckets = %d\n", num_keys, num_buckets);

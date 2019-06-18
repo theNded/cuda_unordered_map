@@ -101,15 +101,6 @@ public:
     static std::string getTypeName() { return std::string("ConcurrentSet"); }
 };
 
-template <typename KeyT, typename ValueT>
-class PhaseConcurrentMapT {
-public:
-    using SlabTypeT = phase_concurrent_slab<KeyT, ValueT>;
-    static std::string getTypeName() {
-        return std::string("PhaseConcurrentMap");
-    }
-};
-
 // the main class to be specialized for different types of hash tables
 template <typename KeyT, typename ValueT, SlabHashTypeT SlabHashT>
 class GpuSlabHash;

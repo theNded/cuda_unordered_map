@@ -158,8 +158,3 @@ GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentSet>::searchKey(
     }
     return myResult;
 }
-
-template <typename KeyT, typename ValueT>
-__device__ __forceinline__ bool
-GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentSet>::searchKeyBulk(
-        const uint32_t& laneId, const KeyT& myKey, const uint32_t bucket_id) {}

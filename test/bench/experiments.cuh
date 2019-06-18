@@ -113,7 +113,6 @@ void load_factor_bulk_experiment(uint32_t num_keys,
 
     float build_time = 0.0f;
     float search_time = 0.0f;
-    float search_time_bulk = 0.0f;
     double load_factor = 0.0;
     for (int iter = 0; iter < num_iter; iter++) {
       // building the hash table:
@@ -134,8 +133,6 @@ void load_factor_bulk_experiment(uint32_t num_keys,
       }
       // performing the queries:
       search_time += hash_table.hash_search(h_query, h_result, num_queries);
-      search_time_bulk +=
-          hash_table.hash_search_bulk(h_query, h_result, num_queries);
 
       // CUDPP hash table:
       if (run_cudpp) {
@@ -145,7 +142,6 @@ void load_factor_bulk_experiment(uint32_t num_keys,
     }
     build_time /= num_iter;
     search_time /= num_iter;
-    search_time_bulk /= num_iter;
     load_factor /= num_iter;
 
     rapidjson::Value object(rapidjson::kObjectType);
@@ -163,13 +159,6 @@ void load_factor_bulk_experiment(uint32_t num_keys,
         "build_rate_mps",
         rapidjson::Value().SetDouble(double(num_keys) / build_time / 1000.0),
         doc.GetAllocator());
-    object.AddMember("search_time_bulk_ms",
-                     rapidjson::Value().SetDouble(search_time_bulk),
-                     doc.GetAllocator());
-    object.AddMember("search_rate_bulk_mps",
-                     rapidjson::Value().SetDouble(double(num_queries) /
-                                                  search_time_bulk / 1000.0),
-                     doc.GetAllocator());
     object.AddMember("search_time_ms",
                      rapidjson::Value().SetDouble(search_time),
                      doc.GetAllocator());
@@ -273,7 +262,6 @@ void singleton_experiment(uint32_t num_keys,
 
   float build_time = 0.0f;
   float search_time = 0.0f;
-  float search_time_bulk = 0.0f;
   double load_factor = 0.0;
   for (int iter = 0; iter < num_iter; iter++) {
     // building the hash table:
@@ -287,8 +275,6 @@ void singleton_experiment(uint32_t num_keys,
 
     // performing the queries:
     search_time += hash_table.hash_search(h_query, h_result, num_queries);
-    search_time_bulk +=
-        hash_table.hash_search_bulk(h_query, h_result, num_queries);
 
     // CUDPP hash table:
     if (run_cudpp) {
@@ -298,18 +284,16 @@ void singleton_experiment(uint32_t num_keys,
   }
   build_time /= num_iter;
   search_time /= num_iter;
-  search_time_bulk /= num_iter;
   load_factor /= num_iter;
 
   if (verbose) {
     printf(
         "num_element = %u, load_factor = %.2f, query_ratio = %.2f, num_buckets "
         "= %d\nbuild_rate: %.2f M elements/s\nsearch rate = %.2f M "
-        "queries/s\nbulk search rate = %.2f M queries/s\n",
+        "queries/s\n",
         num_keys, load_factor, query_ratio, num_buckets,
         double(num_keys) / build_time / 1000.0,
-        double(num_queries) / search_time / 1000.0,
-        double(num_queries) / search_time_bulk / 1000.0);
+        double(num_queries) / search_time / 1000.0);
   }
 
   rapidjson::Value object(rapidjson::kObjectType);
@@ -327,13 +311,6 @@ void singleton_experiment(uint32_t num_keys,
       "build_rate_mps",
       rapidjson::Value().SetDouble(double(num_keys) / build_time / 1000.0),
       doc.GetAllocator());
-  object.AddMember("search_time_bulk_ms",
-                   rapidjson::Value().SetDouble(search_time_bulk),
-                   doc.GetAllocator());
-  object.AddMember("search_rate_bulk_mps",
-                   rapidjson::Value().SetDouble(double(num_queries) /
-                                                search_time_bulk / 1000.0),
-                   doc.GetAllocator());
   object.AddMember("search_time_ms", rapidjson::Value().SetDouble(search_time),
                    doc.GetAllocator());
   object.AddMember(
@@ -485,7 +462,6 @@ void build_search_bulk_experiment(uint32_t num_keys_start,
     // cudpp_build_time /= num_iter;
     // cudpp_search_time /= num_iter;
     search_time /= num_iter;
-    search_time_bulk /= num_iter;
     load_factor_total /= num_iter;
 
     if (verbose) {
