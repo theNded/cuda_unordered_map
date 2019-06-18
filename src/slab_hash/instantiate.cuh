@@ -28,18 +28,7 @@
 #include "helper/helper_cuda.h"
 #include "helper_warp.cuh"
 
-// class declaration:
-#include "iterator.cuh"
-#include "slab_hash/concurrent_map/cmap.cuh"
-#include "slab_hash/concurrent_set/cset.cuh"
-
-// warp implementations of member functions:
-#include "slab_hash/concurrent_map/cmap_device.cuh"
-#include "slab_hash/concurrent_set/cset_device.cuh"
-
-#include "slab_hash/concurrent_map/cmap_kernel.cuh"
-#include "slab_hash/concurrent_set/cset_kernel.cuh"
-
-// implementations:
-#include "slab_hash/concurrent_map/cmap_host.cuh"
-#include "slab_hash/concurrent_set/cset_host.cuh"
+#include "slab_hash.h"
+#include "slab_hash_kernel.cuh"
+#include "slab_hash_device.cuh"
+#include "slab_hash_host.cuh"

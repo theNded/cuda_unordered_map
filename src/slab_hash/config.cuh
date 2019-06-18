@@ -24,47 +24,9 @@ static constexpr uint32_t EMPTY_VALUE = 0xFFFFFFFF;
 static constexpr uint64_t EMPTY_PAIR_64 = 0xFFFFFFFFFFFFFFFFLL;
 static constexpr uint32_t WARP_WIDTH = 32;
 static constexpr uint32_t SEARCH_NOT_FOUND = 0xFFFFFFFF;
-
-enum class SlabHashTypeT { ConcurrentMap, ConcurrentSet };
-
-template <typename KeyT, typename ValueT>
-class ConcurrentMapT {
-public:
-    // fixed parameters for the data structure
-    static constexpr uint32_t A_INDEX_POINTER = 0xFFFFFFFE;
-    static constexpr uint32_t EMPTY_INDEX_POINTER = 0xFFFFFFFF;
-    static constexpr uint32_t BASE_UNIT_SIZE = 32;
-    static constexpr uint32_t REGULAR_NODE_ADDRESS_MASK = 0x30000000;
-    static constexpr uint32_t REGULAR_NODE_DATA_MASK = 0x3FFFFFFF;
-    static constexpr uint32_t REGULAR_NODE_KEY_MASK = 0x15555555;
-
-    using SlabTypeT = concurrent_slab;
-
-    static std::string getTypeName() { return std::string("ConcurrentMap"); }
-};
-
-template <typename KeyT>
-class ConcurrentSetT {
-public:
-    // fixed parameters for the data structure
-    static constexpr uint32_t A_INDEX_POINTER = 0xFFFFFFFE;
-    static constexpr uint32_t EMPTY_INDEX_POINTER = 0xFFFFFFFF;
-    static constexpr uint32_t BASE_UNIT_SIZE = 32;
-    static constexpr uint32_t REGULAR_NODE_ADDRESS_MASK = 0x80000000;
-    static constexpr uint32_t REGULAR_NODE_DATA_MASK = 0x7FFFFFFF;
-    static constexpr uint32_t REGULAR_NODE_KEY_MASK = 0x7FFFFFFF;
-    static constexpr uint32_t NEXT_PTR_LANE = 31u;
-
-    using SlabTypeT = key_only_slab;
-
-    static std::string getTypeName() { return std::string("ConcurrentSet"); }
-};
-
-// the main class to be specialized for different types of hash tables
-template <typename KeyT, typename ValueT, SlabHashTypeT SlabHashT>
-class GpuSlabHash;
-
-template <typename KeyT, typename ValueT, SlabHashTypeT SlabHashT>
-class GpuSlabHashContext;
-
-using BucketAddressT = SlabAddressT;
+static constexpr uint32_t A_INDEX_POINTER = 0xFFFFFFFE;
+static constexpr uint32_t EMPTY_INDEX_POINTER = 0xFFFFFFFF;
+static constexpr uint32_t BASE_UNIT_SIZE = 32;
+static constexpr uint32_t REGULAR_NODE_ADDRESS_MASK = 0x30000000;
+static constexpr uint32_t REGULAR_NODE_DATA_MASK = 0x3FFFFFFF;
+static constexpr uint32_t REGULAR_NODE_KEY_MASK = 0x15555555;

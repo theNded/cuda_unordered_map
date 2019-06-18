@@ -16,13 +16,16 @@
 
 #pragma once
 
+#include <cassert>
+#include <memory>
+
 /*
  * This is the main class that will be shallowly copied into the device to be
  * used at runtime. This class does not own the allocated memory on the gpu
  * (i.e., d_table_)
  */
 template <typename KeyT, typename ValueT>
-class GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentSet> {
+class GpuSlabHashContext {
 public:
     // fixed known parameters:
     static constexpr uint32_t PRIME_DIVISOR_ = 4294967291u;
@@ -31,15 +34,12 @@ public:
     GpuSlabHashContext()
         : num_buckets_(0), hash_x_(0), hash_y_(0), d_table_(nullptr) {
         // a single slab on a ConcurrentMap should be 128 bytes
+        assert(sizeof(ConcurrentSlab) == (WARP_WIDTH_ * sizeof(uint32_t)));
     }
 
-    static size_t getSlabUnitSize() {
-        return sizeof(typename ConcurrentSetT<KeyT>::SlabTypeT);
-    }
+    static size_t getSlabUnitSize() { return sizeof(ConcurrentSlab); }
 
-    static std::string getSlabHashTypeName() {
-        return ConcurrentSetT<KeyT>::getTypeName();
-    }
+    static std::string getSlabHashTypeName() { return "ConcurrentMap"; }
 
     __host__ void initParameters(const uint32_t num_buckets,
                                  const uint32_t hash_x,
@@ -49,8 +49,7 @@ public:
         num_buckets_ = num_buckets;
         hash_x_ = hash_x;
         hash_y_ = hash_y;
-        d_table_ = reinterpret_cast<typename ConcurrentSetT<KeyT>::SlabTypeT*>(
-                d_table);
+        d_table_ = reinterpret_cast<ConcurrentSlab*>(d_table);
         dynamic_allocator_ = *allocator_ctx;
     }
 
@@ -59,14 +58,9 @@ public:
         return dynamic_allocator_;
     }
 
-    __device__ __host__ __forceinline__
-            typename ConcurrentSetT<KeyT>::SlabTypeT*
-            getDeviceTablePointer() {
+    __device__ __host__ __forceinline__ ConcurrentSlab*
+    getDeviceTablePointer() {
         return d_table_;
-    }
-
-    __device__ __host__ __forceinline__ uint32_t getNumBuckets() {
-        return num_buckets_;
     }
 
     __device__ __host__ __forceinline__ uint32_t
@@ -74,16 +68,25 @@ public:
         return (((hash_x_ ^ key) + hash_y_) % PRIME_DIVISOR_) % num_buckets_;
     }
 
-    // threads in a warp cooperate with each other to insert keys
-    // into the slab hash set
-    __device__ __forceinline__ void insertKey(bool& to_be_inserted,
-                                              const uint32_t& laneId,
-                                              const KeyT& myKey,
-                                              const uint32_t bucket_id);
+    // threads in a warp cooperate with each other to insert key-value pairs
+    // into the slab hash
+    __device__ __forceinline__ void insertPair(bool& to_be_inserted,
+                                               const uint32_t& laneId,
+                                               const KeyT& myKey,
+                                               const ValueT& myValue,
+                                               const uint32_t bucket_id);
 
     // threads in a warp cooeparte with each other to search for keys
-    // if found, it returns the true, else false
-    __device__ __forceinline__ bool searchKey(bool& to_be_searched,
+    // if found, it returns the corresponding value, else SEARCH_NOT_FOUND
+    // is returned
+    __device__ __forceinline__ void searchKey(bool& to_be_searched,
+                                              const uint32_t& laneId,
+                                              const KeyT& myKey,
+                                              ValueT& myValue,
+                                              const uint32_t bucket_id);
+
+    // all threads within a warp cooperate with each other to delete keys
+    __device__ __forceinline__ void deleteKey(bool& to_be_deleted,
                                               const uint32_t& laneId,
                                               const KeyT& myKey,
                                               const uint32_t bucket_id);
@@ -96,7 +99,7 @@ public:
     __device__ __forceinline__ uint32_t* getPointerFromBucket(
             const uint32_t bucket_id, const uint32_t laneId) {
         return reinterpret_cast<uint32_t*>(d_table_) +
-               bucket_id * ConcurrentSetT<KeyT>::BASE_UNIT_SIZE + laneId;
+               bucket_id * BASE_UNIT_SIZE + laneId;
     }
 
 private:
@@ -116,7 +119,8 @@ private:
     uint32_t num_buckets_;
     uint32_t hash_x_;
     uint32_t hash_y_;
-    typename ConcurrentSetT<KeyT>::SlabTypeT* d_table_;
+
+    ConcurrentSlab* d_table_;
     // a copy of dynamic allocator's context to be used on the GPU
     AllocatorContextT dynamic_allocator_;
 };
@@ -125,7 +129,7 @@ private:
  * This class owns the allocated memory for the hash table
  */
 template <typename KeyT, typename ValueT>
-class GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentSet> {
+class GpuSlabHash {
 private:
     // fixed known parameters:
     static constexpr uint32_t BLOCKSIZE_ = 128;
@@ -147,16 +151,16 @@ private:
 
     // slab hash context, contains everything that a GPU application needs to be
     // able to use this data structure
-    GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentSet> gpu_context_;
+    GpuSlabHashContext<KeyT, ValueT> gpu_context_;
 
     // const pointer to an allocator that all instances of slab hash are going
     // to use. The allocator itself is not owned by this class
-    DynamicAllocatorT* dynamic_allocator_;
+    std::shared_ptr<DynamicAllocatorT> dynamic_allocator_;
     uint32_t device_idx_;
 
 public:
     GpuSlabHash(const uint32_t num_buckets,
-                DynamicAllocatorT* dynamic_allocator,
+                const std::shared_ptr<DynamicAllocatorT>& dynamic_allocator,
                 uint32_t device_idx,
                 const time_t seed = 0,
                 const bool identity_hash = false)
@@ -173,8 +177,7 @@ public:
 
         CHECK_CUDA(cudaSetDevice(device_idx_));
 
-        slab_unit_size_ = GpuSlabHashContext<
-                KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::getSlabUnitSize();
+        slab_unit_size_ = GpuSlabHashContext<KeyT, ValueT>::getSlabUnitSize();
 
         // allocating initial buckets:
         CHECK_CUDA(
@@ -204,16 +207,13 @@ public:
 
     // returns some debug information about the slab hash
     std::string to_string();
-    double computeLoadFactor(int flag) {}
-    GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentSet>&
-    getSlabHashContext() {
-        return gpu_context_;
-    }
+    double computeLoadFactor(int flag);
 
     void buildBulk(KeyT* d_key, ValueT* d_value, uint32_t num_keys);
     void searchIndividual(KeyT* d_query,
                           ValueT* d_result,
                           uint32_t num_queries);
-    void searchBulk(KeyT* d_query, ValueT* d_result, uint32_t num_queries) {}
-    void deleteIndividual(KeyT* d_key, uint32_t num_keys) {}
+    void searchBulk(KeyT* d_query, ValueT* d_result, uint32_t num_queries);
+    void deleteIndividual(KeyT* d_key, uint32_t num_keys);
+    void batchedOperation(KeyT* d_key, ValueT* d_result, uint32_t num_ops);
 };

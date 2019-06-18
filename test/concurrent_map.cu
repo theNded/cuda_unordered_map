@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
         std::swap(h_query[i], h_query[q_index[i]]);
         std::swap(h_result_gt[i], h_result_gt[q_index[i]]);
     }
-    gpu_hash_table<KeyT, ValueT, SlabHashTypeT::ConcurrentMap> hash_table(
+    GpuHashTable<KeyT, ValueT> hash_table(
             num_keys, num_buckets, DEVICE_ID, seed);
 
     float build_time =

@@ -21,29 +21,29 @@ namespace SlabHash_NS {
  * search for a key (and/or an empty spot) in a single slab, returns the laneId
  * if found, otherwise returns -1
  */
-template <typename KeyT, class SlabHashT>
+template <typename KeyT>
 __device__ __forceinline__ int32_t
 findKeyOrEmptyPerWarp(const uint32_t& src_key, const uint32_t read_data_chunk) {
     uint32_t isEmpty =
             (__ballot_sync(0xFFFFFFFF, (read_data_chunk == EMPTY_KEY) ||
                                                (read_data_chunk == src_key)));
-    return __ffs(isEmpty & SlabHashT::REGULAR_NODE_KEY_MASK) - 1;
+    return __ffs(isEmpty & REGULAR_NODE_KEY_MASK) - 1;
 }
 
 // search for just the key
-template <typename KeyT, class SlabHashT>
+template <typename KeyT>
 __device__ __forceinline__ int32_t
 findKeyPerWarp(const uint32_t& src_key, const uint32_t read_data_chunk) {
     uint32_t isEmpty = __ballot_sync(0xFFFFFFFF, (read_data_chunk == src_key));
-    return __ffs(isEmpty & SlabHashT::REGULAR_NODE_KEY_MASK) - 1;
+    return __ffs(isEmpty & REGULAR_NODE_KEY_MASK) - 1;
 }
 
 // search for an empty spot
-template <typename KeyT, class SlabHashT>
+template <typename KeyT>
 __device__ __forceinline__ int32_t
 findEmptyPerWarp(const uint32_t read_data_chunk) {
     uint32_t isEmpty =
             __ballot_sync(0xFFFFFFFF, (read_data_chunk == EMPTY_KEY));
-    return __ffs(isEmpty & SlabHashT::REGULAR_NODE_KEY_MASK) - 1;
+    return __ffs(isEmpty & REGULAR_NODE_KEY_MASK) - 1;
 }
 };  // namespace SlabHash_NS

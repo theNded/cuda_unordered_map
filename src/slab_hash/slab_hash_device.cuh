@@ -16,25 +16,26 @@
 
 #pragma once
 
+#include "slab_hash.h"
+
 //================================================
 // Individual Search Unit:
 //================================================
 template <typename KeyT, typename ValueT>
-__device__ __forceinline__ void
-GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::searchKey(
+__device__ void GpuSlabHashContext<KeyT, ValueT>::searchKey(
         bool& to_be_searched,
         const uint32_t& laneId,
         const KeyT& myKey,
         ValueT& myValue,
         const uint32_t bucket_id) {
-    using SlabHashT = ConcurrentMapT<KeyT, ValueT>;
+    using SlabHashT = ConcurrentSlab;
     uint32_t work_queue = 0;
     uint32_t last_work_queue = work_queue;
-    uint32_t next = SlabHashT::A_INDEX_POINTER;
+    uint32_t next = A_INDEX_POINTER;
 
     while ((work_queue = __ballot_sync(0xFFFFFFFF, to_be_searched))) {
         next = (last_work_queue != work_queue)
-                       ? SlabHashT::A_INDEX_POINTER
+                       ? A_INDEX_POINTER
                        : next;  // a successfull insertion in the warp
         uint32_t src_lane = __ffs(work_queue) - 1;
         uint32_t src_bucket = __shfl_sync(0xFFFFFFFF, bucket_id, src_lane, 32);
@@ -44,17 +45,16 @@ GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::searchKey(
                         reinterpret_cast<const unsigned char*>(&myKey)),
                 src_lane, 32);
         const uint32_t src_unit_data =
-                (next == SlabHashT::A_INDEX_POINTER)
+                (next == A_INDEX_POINTER)
                         ? *(getPointerFromBucket(src_bucket, laneId))
                         : *(getPointerFromSlab(next, laneId));
 
         int32_t found_lane =
-                SlabHash_NS::findKeyPerWarp<KeyT, SlabHashT>(
-                        wanted_key, src_unit_data);
+                SlabHash_NS::findKeyPerWarp<KeyT>(wanted_key, src_unit_data);
 
         if (found_lane < 0) {  // not found
             uint32_t next_ptr = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
-            if (next_ptr == SlabHashT::EMPTY_INDEX_POINTER) {  // not found
+            if (next_ptr == EMPTY_INDEX_POINTER) {  // not found
                 if (laneId == src_lane) {
                     myValue = static_cast<ValueT>(SEARCH_NOT_FOUND);
                     to_be_searched = false;
@@ -81,54 +81,53 @@ GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::searchKey(
  * each other with a warp-cooperative work sharing (WCWS) strategy.
  */
 template <typename KeyT, typename ValueT>
-__device__ __forceinline__ void
-GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::insertPair(
+__device__ void GpuSlabHashContext<KeyT, ValueT>::insertPair(
         bool& to_be_inserted,
         const uint32_t& laneId,
         const KeyT& myKey,
         const ValueT& myValue,
         const uint32_t bucket_id) {
-    using SlabHashT = ConcurrentMapT<KeyT, ValueT>;
+    using SlabHashT = ConcurrentSlab;
     uint32_t work_queue = 0;
     uint32_t last_work_queue = 0;
-    uint32_t next = SlabHashT::A_INDEX_POINTER;
+    uint32_t next = A_INDEX_POINTER;
 
     while ((work_queue = __ballot_sync(0xFFFFFFFF, to_be_inserted))) {
         // to know whether it is a base node, or a regular node
         next = (last_work_queue != work_queue)
-                       ? SlabHashT::A_INDEX_POINTER
+                       ? A_INDEX_POINTER
                        : next;  // a successfull insertion in the warp
         uint32_t src_lane = __ffs(work_queue) - 1;
         uint32_t src_bucket = __shfl_sync(0xFFFFFFFF, bucket_id, src_lane, 32);
 
         uint32_t src_unit_data =
-                (next == SlabHashT::A_INDEX_POINTER)
+                (next == A_INDEX_POINTER)
                         ? *(getPointerFromBucket(src_bucket, laneId))
                         : *(getPointerFromSlab(next, laneId));
         uint64_t old_key_value_pair = 0;
 
         uint32_t isEmpty =
                 (__ballot_sync(0xFFFFFFFF, src_unit_data == EMPTY_KEY)) &
-                SlabHashT::REGULAR_NODE_KEY_MASK;
+                REGULAR_NODE_KEY_MASK;
         if (isEmpty == 0) {  // no empty slot available:
             uint32_t next_ptr = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
-            if (next_ptr == SlabHashT::EMPTY_INDEX_POINTER) {
+            if (next_ptr == EMPTY_INDEX_POINTER) {
                 // allocate a new node:
                 uint32_t new_node_ptr = allocateSlab(laneId);
 
                 // TODO: experiment if it's better to use lane 0 instead
                 if (laneId == 31) {
                     const uint32_t* p =
-                            (next == SlabHashT::A_INDEX_POINTER)
+                            (next == A_INDEX_POINTER)
                                     ? getPointerFromBucket(src_bucket, 31)
                                     : getPointerFromSlab(next, 31);
 
-                    uint32_t temp = atomicCAS((unsigned int*)p,
-                                              SlabHashT::EMPTY_INDEX_POINTER,
-                                              new_node_ptr);
+                    uint32_t temp =
+                            atomicCAS((unsigned int*)p, EMPTY_INDEX_POINTER,
+                                      new_node_ptr);
                     // check whether it was successful, and
                     // free the allocated memory otherwise
-                    if (temp != SlabHashT::EMPTY_INDEX_POINTER) {
+                    if (temp != EMPTY_INDEX_POINTER) {
                         freeSlab(new_node_ptr);
                     }
                 }
@@ -136,11 +135,10 @@ GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::insertPair(
                 next = next_ptr;
             }
         } else {  // there is an empty slot available
-            int dest_lane =
-                    __ffs(isEmpty & SlabHashT::REGULAR_NODE_KEY_MASK) - 1;
+            int dest_lane = __ffs(isEmpty & REGULAR_NODE_KEY_MASK) - 1;
             if (laneId == src_lane) {
                 const uint32_t* p =
-                        (next == SlabHashT::A_INDEX_POINTER)
+                        (next == A_INDEX_POINTER)
                                 ? getPointerFromBucket(src_bucket, dest_lane)
                                 : getPointerFromSlab(next, dest_lane);
 
@@ -162,23 +160,21 @@ GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::insertPair(
 }
 
 template <typename KeyT, typename ValueT>
-__device__ __forceinline__ void
-GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::deleteKey(
+__device__ void GpuSlabHashContext<KeyT, ValueT>::deleteKey(
         bool& to_be_deleted,
         const uint32_t& laneId,
         const KeyT& myKey,
         const uint32_t bucket_id) {
     // delete all instances of key
 
-    using SlabHashT = ConcurrentMapT<KeyT, ValueT>;
     uint32_t work_queue = 0;
     uint32_t last_work_queue = 0;
-    uint32_t next = SlabHashT::A_INDEX_POINTER;
+    uint32_t next = A_INDEX_POINTER;
 
     while ((work_queue = __ballot_sync(0xFFFFFFFF, to_be_deleted))) {
         // to know whether it is a base node, or a regular node
         next = (last_work_queue != work_queue)
-                       ? SlabHashT::A_INDEX_POINTER
+                       ? A_INDEX_POINTER
                        : next;  // a successfull insertion in the warp
         uint32_t src_lane = __ffs(work_queue) - 1;
         uint32_t src_key = __shfl_sync(
@@ -192,29 +188,28 @@ GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::deleteKey(
         // block index, and the memory unit index
 
         const uint32_t src_unit_data =
-                (next == SlabHashT::A_INDEX_POINTER)
+                (next == A_INDEX_POINTER)
                         ? *(getPointerFromBucket(src_bucket, laneId))
                         : *(getPointerFromSlab(next, laneId));
 
         // looking for the item to be deleted:
         uint32_t isFound =
                 (__ballot_sync(0xFFFFFFFF, src_unit_data == src_key)) &
-                SlabHashT::REGULAR_NODE_KEY_MASK;
+                REGULAR_NODE_KEY_MASK;
 
         if (isFound == 0) {  // no matching slot found:
             uint32_t next_ptr = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
-            if (next_ptr == SlabHashT::EMPTY_INDEX_POINTER) {
+            if (next_ptr == EMPTY_INDEX_POINTER) {
                 // not found:
                 to_be_deleted = false;
             } else {
                 next = next_ptr;
             }
         } else {  // The wanted key found:
-            int dest_lane =
-                    __ffs(isFound & SlabHashT::REGULAR_NODE_KEY_MASK) - 1;
+            int dest_lane = __ffs(isFound & REGULAR_NODE_KEY_MASK) - 1;
             if (laneId == src_lane) {
                 uint32_t* p =
-                        (next == SlabHashT::A_INDEX_POINTER)
+                        (next == A_INDEX_POINTER)
                                 ? getPointerFromBucket(src_bucket, dest_lane)
                                 : getPointerFromSlab(next, dest_lane);
                 // deleting that item (no atomics)

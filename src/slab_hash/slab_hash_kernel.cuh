@@ -16,14 +16,14 @@
 
 #pragma once
 
+#include "slab_hash.h"
+
 //=== Individual search kernel:
 template <typename KeyT, typename ValueT>
-__global__ void search_table(
-        KeyT* d_queries,
-        ValueT* d_results,
-        uint32_t num_queries,
-        GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>
-                slab_hash) {
+__global__ void search_table(KeyT* d_queries,
+                             ValueT* d_results,
+                             uint32_t num_queries,
+                             GpuSlabHashContext<KeyT, ValueT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t laneId = threadIdx.x & 0x1F;
 
@@ -56,12 +56,10 @@ __global__ void search_table(
  *
  */
 template <typename KeyT, typename ValueT>
-__global__ void build_table_kernel(
-        KeyT* d_key,
-        ValueT* d_value,
-        uint32_t num_keys,
-        GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>
-                slab_hash) {
+__global__ void build_table_kernel(KeyT* d_key,
+                                   ValueT* d_value,
+                                   uint32_t num_keys,
+                                   GpuSlabHashContext<KeyT, ValueT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t laneId = threadIdx.x & 0x1F;
 
@@ -88,12 +86,10 @@ __global__ void build_table_kernel(
 }
 
 template <typename KeyT, typename ValueT>
-__global__ void batched_operations(
-        uint32_t* d_operations,
-        uint32_t* d_results,
-        uint32_t num_operations,
-        GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>
-                slab_hash) {
+__global__ void batched_operations(uint32_t* d_operations,
+                                   uint32_t* d_results,
+                                   uint32_t num_operations,
+                                   GpuSlabHashContext<KeyT, ValueT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t laneId = threadIdx.x & 0x1F;
 
@@ -135,11 +131,9 @@ __global__ void batched_operations(
 }
 
 template <typename KeyT, typename ValueT>
-__global__ void delete_table_keys(
-        KeyT* d_key_deleted,
-        uint32_t num_keys,
-        GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>
-                slab_hash) {
+__global__ void delete_table_keys(KeyT* d_key_deleted,
+                                  uint32_t num_keys,
+                                  GpuSlabHashContext<KeyT, ValueT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t laneId = threadIdx.x & 0x1F;
 
@@ -169,12 +163,9 @@ __global__ void delete_table_keys(
  * bucket. The final results per bucket is stored in d_count_result array
  */
 template <typename KeyT, typename ValueT>
-__global__ void bucket_count_kernel(
-        GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>
-                slab_hash,
-        uint32_t* d_count_result,
-        uint32_t num_buckets) {
-    using SlabHashT = ConcurrentMapT<KeyT, ValueT>;
+__global__ void bucket_count_kernel(GpuSlabHashContext<KeyT, ValueT> slab_hash,
+                                    uint32_t* d_count_result,
+                                    uint32_t num_buckets) {
     // global warp ID
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t wid = tid >> 5;
@@ -193,13 +184,13 @@ __global__ void bucket_count_kernel(
     uint32_t src_unit_data = *slab_hash.getPointerFromBucket(wid, laneId);
 
     count += __popc(__ballot_sync(0xFFFFFFFF, src_unit_data != EMPTY_KEY) &
-                    SlabHashT::REGULAR_NODE_KEY_MASK);
+                    REGULAR_NODE_KEY_MASK);
     uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
 
-    while (next != SlabHashT::EMPTY_INDEX_POINTER) {
+    while (next != EMPTY_INDEX_POINTER) {
         src_unit_data = *slab_hash.getPointerFromSlab(next, laneId);
         count += __popc(__ballot_sync(0xFFFFFFFF, src_unit_data != EMPTY_KEY) &
-                        SlabHashT::REGULAR_NODE_KEY_MASK);
+                        REGULAR_NODE_KEY_MASK);
         next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
     }
     // writing back the results:
@@ -216,8 +207,7 @@ __global__ void bucket_count_kernel(
 template <typename KeyT, typename ValueT>
 __global__ void compute_stats_allocators(
         uint32_t* d_count_super_block,
-        GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>
-                slab_hash) {
+        GpuSlabHashContext<KeyT, ValueT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     int num_bitmaps =

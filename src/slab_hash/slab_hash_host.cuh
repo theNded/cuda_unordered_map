@@ -16,8 +16,10 @@
 
 #pragma once
 
+#include "slab_hash.h"
+
 template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::buildBulk(
+void GpuSlabHash<KeyT, ValueT>::buildBulk(
         KeyT* d_key, ValueT* d_value, uint32_t num_keys) {
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     // calling the kernel for bulk build:
@@ -27,7 +29,7 @@ void GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::buildBulk(
 }
 
 template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::searchIndividual(
+void GpuSlabHash<KeyT, ValueT>::searchIndividual(
         KeyT* d_query, ValueT* d_result, uint32_t num_queries) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_queries + BLOCKSIZE_ - 1) / BLOCKSIZE_;
@@ -36,7 +38,7 @@ void GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::searchIndividual(
 }
 
 template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::deleteIndividual(
+void GpuSlabHash<KeyT, ValueT>::deleteIndividual(
         KeyT* d_key, uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
@@ -46,7 +48,7 @@ void GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::deleteIndividual(
 
 // perform a batch of (a mixture of) updates/searches
 template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::batchedOperation(
+void GpuSlabHash<KeyT, ValueT>::batchedOperation(
         KeyT* d_key, ValueT* d_result, uint32_t num_ops) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_ops + BLOCKSIZE_ - 1) / BLOCKSIZE_;
@@ -56,7 +58,7 @@ void GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::batchedOperation(
 
 template <typename KeyT, typename ValueT>
 std::string
-GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::to_string() {
+GpuSlabHash<KeyT, ValueT>::to_string() {
     std::string result;
     result += " ==== GpuSlabHash: \n";
     result += "\t Running on device \t\t " + std::to_string(device_idx_) + "\n";
@@ -75,7 +77,7 @@ GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::to_string() {
 
 template <typename KeyT, typename ValueT>
 double
-GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>::computeLoadFactor(
+GpuSlabHash<KeyT, ValueT>::computeLoadFactor(
         int flag = 0) {
     uint32_t* h_bucket_count = new uint32_t[num_buckets_];
     uint32_t* d_bucket_count;
