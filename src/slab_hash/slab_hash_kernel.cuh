@@ -25,14 +25,15 @@ __global__ void search_table(KeyT* d_queries,
                              uint32_t num_queries,
                              GpuSlabHashContext<KeyT, ValueT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t laneId = threadIdx.x & 0x1F;
+    uint32_t lane_id = threadIdx.x & 0x1F;
 
-    if ((tid - laneId) >= num_queries) {
+    /* This warp is idle */
+    if ((tid - lane_id) >= num_queries) {
         return;
     }
 
-    // initializing the memory allocator on each warp:
-    slab_hash.getAllocatorContext().initAllocator(tid, laneId);
+    /* Initialize the memory allocator on each warp */
+    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
 
     KeyT myQuery = 0;
     ValueT myResult = static_cast<ValueT>(SEARCH_NOT_FOUND);
@@ -44,7 +45,7 @@ __global__ void search_table(KeyT* d_queries,
         to_search = true;
     }
 
-    slab_hash.searchKey(to_search, laneId, myQuery, myResult, myBucket);
+    slab_hash.searchKey(to_search, lane_id, myQuery, myResult, myBucket);
 
     // writing back the results:
     if (tid < num_queries) {
@@ -52,29 +53,24 @@ __global__ void search_table(KeyT* d_queries,
     }
 }
 
-/*
- *
- */
 template <typename KeyT, typename ValueT>
 __global__ void build_table_kernel(KeyT* d_key,
                                    ValueT* d_value,
                                    uint32_t num_keys,
                                    GpuSlabHashContext<KeyT, ValueT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t laneId = threadIdx.x & 0x1F;
+    uint32_t lane_id = threadIdx.x & 0x1F;
 
-    if ((tid - laneId) >= num_keys) {
+    if ((tid - lane_id) >= num_keys) {
         return;
     }
 
-    // initializing the memory allocator on each warp:
-    slab_hash.getAllocatorContext().initAllocator(tid, laneId);
+    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
 
     KeyT myKey = 0;
     ValueT myValue = 0;
     uint32_t myBucket = 0;
     bool to_insert = false;
-
     if (tid < num_keys) {
         myKey = d_key[tid];
         myValue = d_value[tid];
@@ -82,21 +78,21 @@ __global__ void build_table_kernel(KeyT* d_key,
         to_insert = true;
     }
 
-    slab_hash.insertPair(to_insert, laneId, myKey, myValue, myBucket);
+    slab_hash.insertPair(to_insert, lane_id, myKey, myValue, myBucket);
 }
 
 template <typename KeyT, typename ValueT>
-__global__ void batched_operations(uint32_t* d_operations,
+__global__ void mixed_operation(uint32_t* d_operations,
                                    uint32_t* d_results,
                                    uint32_t num_operations,
                                    GpuSlabHashContext<KeyT, ValueT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t laneId = threadIdx.x & 0x1F;
+    uint32_t lane_id = threadIdx.x & 0x1F;
 
-    if ((tid - laneId) >= num_operations) return;
+    if ((tid - lane_id) >= num_operations) return;
 
     // initializing the memory allocator on each warp:
-    slab_hash.getAllocatorContext().initAllocator(tid, laneId);
+    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
 
     uint32_t myOperation = 0;
     uint32_t myKey = 0;
@@ -117,13 +113,13 @@ __global__ void batched_operations(uint32_t* d_operations,
     bool to_search = (myOperation == 3) ? true : false;
 
     // first insertions:
-    slab_hash.insertPair(to_insert, laneId, myKey, myValue, myBucket);
+    slab_hash.insertPair(to_insert, lane_id, myKey, myValue, myBucket);
 
     // second deletions:
-    slab_hash.deleteKey(to_delete, laneId, myKey, myBucket);
+    slab_hash.deleteKey(to_delete, lane_id, myKey, myBucket);
 
     // finally search queries:
-    slab_hash.searchKey(to_search, laneId, myKey, myValue, myBucket);
+    slab_hash.searchKey(to_search, lane_id, myKey, myValue, myBucket);
 
     if (myOperation == 3 && myValue != SEARCH_NOT_FOUND) {
         d_results[tid] = myValue;
@@ -135,14 +131,14 @@ __global__ void delete_table_keys(KeyT* d_key_deleted,
                                   uint32_t num_keys,
                                   GpuSlabHashContext<KeyT, ValueT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t laneId = threadIdx.x & 0x1F;
+    uint32_t lane_id = threadIdx.x & 0x1F;
 
-    if ((tid - laneId) >= num_keys) {
+    if ((tid - lane_id) >= num_keys) {
         return;
     }
 
     // initializing the memory allocator:
-    slab_hash.getAllocatorContext().initAllocator(tid, laneId);
+    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
 
     KeyT myKey = 0;
     uint32_t myBucket = 0;
@@ -155,7 +151,7 @@ __global__ void delete_table_keys(KeyT* d_key_deleted,
     }
 
     // delete the keys:
-    slab_hash.deleteKey(to_delete, laneId, myKey, myBucket);
+    slab_hash.deleteKey(to_delete, lane_id, myKey, myBucket);
 }
 
 /*
@@ -174,27 +170,27 @@ __global__ void bucket_count_kernel(GpuSlabHashContext<KeyT, ValueT> slab_hash,
         return;
     }
 
-    uint32_t laneId = threadIdx.x & 0x1F;
+    uint32_t lane_id = threadIdx.x & 0x1F;
 
     // initializing the memory allocator on each warp:
-    slab_hash.getAllocatorContext().initAllocator(tid, laneId);
+    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
 
     uint32_t count = 0;
 
-    uint32_t src_unit_data = *slab_hash.getPointerFromBucket(wid, laneId);
+    uint32_t src_unit_data = *slab_hash.getPointerFromBucket(wid, lane_id);
 
     count += __popc(__ballot_sync(0xFFFFFFFF, src_unit_data != EMPTY_KEY) &
                     REGULAR_NODE_KEY_MASK);
     uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
 
     while (next != EMPTY_INDEX_POINTER) {
-        src_unit_data = *slab_hash.getPointerFromSlab(next, laneId);
+        src_unit_data = *slab_hash.getPointerFromSlab(next, lane_id);
         count += __popc(__ballot_sync(0xFFFFFFFF, src_unit_data != EMPTY_KEY) &
                         REGULAR_NODE_KEY_MASK);
         next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
     }
     // writing back the results:
-    if (laneId == 0) {
+    if (lane_id == 0) {
         d_count_result[wid] = count;
     }
 }

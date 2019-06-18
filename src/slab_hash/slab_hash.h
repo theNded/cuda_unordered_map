@@ -71,7 +71,7 @@ public:
     // threads in a warp cooperate with each other to insert key-value pairs
     // into the slab hash
     __device__ __forceinline__ void insertPair(bool& to_be_inserted,
-                                               const uint32_t& laneId,
+                                               const uint32_t& lane_id,
                                                const KeyT& myKey,
                                                const ValueT& myValue,
                                                const uint32_t bucket_id);
@@ -80,34 +80,34 @@ public:
     // if found, it returns the corresponding value, else SEARCH_NOT_FOUND
     // is returned
     __device__ __forceinline__ void searchKey(bool& to_be_searched,
-                                              const uint32_t& laneId,
+                                              const uint32_t& lane_id,
                                               const KeyT& myKey,
                                               ValueT& myValue,
                                               const uint32_t bucket_id);
 
     // all threads within a warp cooperate with each other to delete keys
     __device__ __forceinline__ void deleteKey(bool& to_be_deleted,
-                                              const uint32_t& laneId,
+                                              const uint32_t& lane_id,
                                               const KeyT& myKey,
                                               const uint32_t bucket_id);
 
     __device__ __forceinline__ uint32_t* getPointerFromSlab(
-            const SlabAddressT& slab_address, const uint32_t laneId) {
-        return dynamic_allocator_.getPointerFromSlab(slab_address, laneId);
+            const SlabAddressT& slab_address, const uint32_t lane_id) {
+        return dynamic_allocator_.getPointerFromSlab(slab_address, lane_id);
     }
 
     __device__ __forceinline__ uint32_t* getPointerFromBucket(
-            const uint32_t bucket_id, const uint32_t laneId) {
+            const uint32_t bucket_id, const uint32_t lane_id) {
         return reinterpret_cast<uint32_t*>(d_table_) +
-               bucket_id * BASE_UNIT_SIZE + laneId;
+               bucket_id * BASE_UNIT_SIZE + lane_id;
     }
 
 private:
     // this function should be operated in a warp-wide fashion
     // TODO: add required asserts to make sure this is true in tests/debugs
     __device__ __forceinline__ SlabAllocAddressT
-    allocateSlab(const uint32_t& laneId) {
-        return dynamic_allocator_.warpAllocate(laneId);
+    allocateSlab(const uint32_t& lane_id) {
+        return dynamic_allocator_.warpAllocate(lane_id);
     }
 
     // a thread-wide function to free the slab that was just allocated

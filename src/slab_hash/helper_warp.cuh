@@ -18,7 +18,7 @@
 
 namespace SlabHash_NS {
 /*
- * search for a key (and/or an empty spot) in a single slab, returns the laneId
+ * search for a key (and/or an empty spot) in a single slab, returns the lane_id
  * if found, otherwise returns -1
  */
 template <typename KeyT>

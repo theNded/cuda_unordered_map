@@ -33,14 +33,14 @@ __global__ void search_table(
     uint32_t num_queries,
     GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap> slab_hash) {
   uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-  uint32_t laneId = threadIdx.x & 0x1F;
+  uint32_t lane_id = threadIdx.x & 0x1F;
 
-  if ((tid - laneId) >= num_queries) {
+  if ((tid - lane_id) >= num_queries) {
     return;
   }
 
   // initializing the memory allocator on each warp:
-  slab_hash.getAllocatorContext().initAllocator(tid, laneId);
+  slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
 
   KeyT myQuery = 0;
   ValueT myResult = static_cast<ValueT>(SEARCH_NOT_FOUND);
@@ -52,7 +52,7 @@ __global__ void search_table(
     to_search = true;
   }
 
-  slab_hash.searchKey(to_search, laneId, myQuery, myResult, myBucket);
+  slab_hash.searchKey(to_search, lane_id, myQuery, myResult, myBucket);
 
   // writing back the results:
   if (tid < num_queries) {

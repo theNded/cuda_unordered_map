@@ -173,7 +173,7 @@ public:
         return temp_time;
     }
 
-    float batched_operations(uint32_t* h_batch_op,
+    float mixed_operation(uint32_t* h_batch_op,
                              uint32_t* h_results,
                              uint32_t batch_size,
                              uint32_t batch_id) {

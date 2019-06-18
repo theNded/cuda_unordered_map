@@ -107,9 +107,9 @@ public:
     }
 
     __device__ __forceinline__ uint32_t* getPointerFromSlab(
-            const SlabAllocAddressT& next, const uint32_t& laneId) {
+            const SlabAllocAddressT& next, const uint32_t& lane_id) {
         return reinterpret_cast<uint32_t*>(d_super_blocks_) +
-               addressDecoder(next) + laneId;
+               addressDecoder(next) + lane_id;
     }
 
     __device__ __forceinline__ uint32_t* getPointerForBitmap(
@@ -144,18 +144,18 @@ public:
 
     // Objective: each warp selects its own resident warp allocator:
     __device__ __forceinline__ void initAllocator(uint32_t& tid,
-                                                  uint32_t& laneId) {
+                                                  uint32_t& lane_id) {
         // hashing the memory block to be used:
         createMemBlockIndex(tid >> 5);
 
         // loading the assigned memory block:
         resident_bitmap_ =
                 *(d_super_blocks_ + super_block_index_ * SUPER_BLOCK_SIZE_ +
-                  resident_index_ * BITMAP_SIZE_ + laneId);
+                  resident_index_ * BITMAP_SIZE_ + lane_id);
         allocated_index_ = 0xFFFFFFFF;
     }
 
-    __device__ __forceinline__ uint32_t warpAllocate(const uint32_t& laneId) {
+    __device__ __forceinline__ uint32_t warpAllocate(const uint32_t& lane_id) {
         // tries and allocate a new memory units within the resident memory
         // block if it returns 0xFFFFFFFF, then there was not any empty memory
         // unit a new resident block should be chosen, and repeat again
@@ -182,11 +182,11 @@ public:
                 continue;
             }
             uint32_t src_lane = __ffs(free_lane) - 1;
-            if (src_lane == laneId) {
+            if (src_lane == lane_id) {
                 read_bitmap = atomicCAS(
                         d_super_blocks_ +
                                 super_block_index_ * SUPER_BLOCK_SIZE_ +
-                                resident_index_ * BITMAP_SIZE_ + laneId,
+                                resident_index_ * BITMAP_SIZE_ + lane_id,
                         resident_bitmap_, resident_bitmap_ | (1 << empty_lane));
                 if (read_bitmap == resident_bitmap_) {
                     // successful attempt:
@@ -195,7 +195,7 @@ public:
                             (super_block_index_
                              << SUPER_BLOCK_BIT_OFFSET_ALLOC_) |
                             (resident_index_ << MEM_BLOCK_BIT_OFFSET_ALLOC_) |
-                            (laneId << MEM_UNIT_BIT_OFFSET_ALLOC_) | empty_lane;
+                            (lane_id << MEM_UNIT_BIT_OFFSET_ALLOC_) | empty_lane;
                 } else {
                     // Not successful: updating the current bitmap
                     resident_bitmap_ = read_bitmap;
@@ -208,7 +208,7 @@ public:
         return allocated_result;
     }
 
-    __device__ __forceinline__ uint32_t warpAllocateBulk(uint32_t& laneId,
+    __device__ __forceinline__ uint32_t warpAllocateBulk(uint32_t& lane_id,
                                                          const uint32_t k) {
         // tries and allocate k consecutive memory units within the resident
         // memory block if it returns 0xFFFFFFFF, then there was not any empty
@@ -249,11 +249,11 @@ public:
             }
             uint32_t src_lane = __ffs(free_lane) - 1;
 
-            if (src_lane == laneId) {
+            if (src_lane == lane_id) {
                 read_bitmap = atomicCAS(
                         d_super_blocks_ +
                                 super_block_index_ * SUPER_BLOCK_SIZE_ +
-                                resident_index_ * BITMAP_SIZE_ + laneId,
+                                resident_index_ * BITMAP_SIZE_ + lane_id,
                         resident_bitmap_, resident_bitmap_ | mask);
                 if (read_bitmap == resident_bitmap_) {
                     // successful attempt:
@@ -262,7 +262,7 @@ public:
                             (super_block_index_
                              << SUPER_BLOCK_BIT_OFFSET_ALLOC_) |
                             (resident_index_ << MEM_BLOCK_BIT_OFFSET_ALLOC_) |
-                            (laneId << MEM_UNIT_BIT_OFFSET_ALLOC_) | empty_lane;
+                            (lane_id << MEM_UNIT_BIT_OFFSET_ALLOC_) | empty_lane;
                 } else {
                     // Not successful: updating the current bitmap
                     resident_bitmap_ = read_bitmap;

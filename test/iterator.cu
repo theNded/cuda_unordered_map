@@ -34,14 +34,14 @@ __global__ void print_table(
                 slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t wid = tid >> 5;
-    uint32_t laneId = threadIdx.x & 0x1F;
+    uint32_t lane_id = threadIdx.x & 0x1F;
 
     if (wid >= slab_hash.getNumBuckets()) {
         return;
     }
 
     // initializing the memory allocator on each warp:
-    slab_hash.getAllocatorContext().initAllocator(tid, laneId);
+    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
 
     if (tid == 0) {
         printf(" == Printing the base array\n");

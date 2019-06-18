@@ -52,7 +52,7 @@ void GpuSlabHash<KeyT, ValueT>::batchedOperation(
         KeyT* d_key, ValueT* d_result, uint32_t num_ops) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_ops + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    batched_operations<KeyT, ValueT><<<num_blocks, BLOCKSIZE_>>>(
+    mixed_operation<KeyT, ValueT><<<num_blocks, BLOCKSIZE_>>>(
             d_key, d_result, num_ops, gpu_context_);
 }
 

@@ -608,7 +608,7 @@ void concurrent_batched_op_load_factor_experiment(uint32_t max_key_num,
             for (batch_id = 0; batch_id < num_initial_batches; batch_id++) {
                 // Pure insertion
                 key_gen.next_batch(1.0f, 0.0f, 0.0f);
-                init_build_time += hash_table.batched_operations(
+                init_build_time += hash_table.mixed_operation(
                         key_gen.h_batch_buffer_, h_result, batch_size,
                         batch_id);
             }
@@ -618,7 +618,7 @@ void concurrent_batched_op_load_factor_experiment(uint32_t max_key_num,
             // concurrent update phase:
             for (; batch_id < num_batches; batch_id++) {
                 key_gen.next_batch(a_insert, b_delete, c_search_exist);
-                concurrent_time += hash_table.batched_operations(
+                concurrent_time += hash_table.mixed_operation(
                         key_gen.h_batch_buffer_, h_result, batch_size,
                         batch_id);
             }
