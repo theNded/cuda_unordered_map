@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "memory_heap/MemoryHeapHost.cuh"
 #include "slab_hash/instantiate.cuh"
 
 struct HasherUint32 {
@@ -42,7 +43,8 @@ public:
     uint32_t cuda_device_idx_;
 
     /* Allocator for the @slab linked lists */
-    std::shared_ptr<DynamicAllocatorT> dynamic_allocator_;
+    std::shared_ptr<MemoryHeap<KeyT>> key_allocator_;
+    std::shared_ptr<SlabListAllocator> slab_list_allocator_;
     std::shared_ptr<GpuSlabHash<KeyT, ValueT, HashFunc>> slab_hash_;
 
     KeyT* d_key_;
@@ -57,7 +59,7 @@ public:
           num_buckets_(num_buckets),
           cuda_device_idx_(device_idx),
           slab_hash_(nullptr),
-          dynamic_allocator_(nullptr) {
+          slab_list_allocator_(nullptr) {
         /* Set device */
         int32_t cuda_device_count_ = 0;
         CHECK_CUDA(cudaGetDeviceCount(&cuda_device_count_));
@@ -71,11 +73,12 @@ public:
         CHECK_CUDA(cudaMalloc((void**)&d_result_, sizeof(ValueT) * max_keys_));
 
         // allocate an initialize the allocator:
-        dynamic_allocator_ = std::make_shared<DynamicAllocatorT>();
+        slab_list_allocator_ = std::make_shared<SlabListAllocator>();
+        key_allocator_ = std::make_shared<MemoryHeap<KeyT>>(max_keys_);
 
-        // slab hash:
         slab_hash_ = std::make_shared<GpuSlabHash<KeyT, ValueT, HashFunc>>(
-                num_buckets_, dynamic_allocator_, cuda_device_idx_);
+                num_buckets_, slab_list_allocator_, key_allocator_,
+                cuda_device_idx_);
     }
 
     ~GpuHashTable() {

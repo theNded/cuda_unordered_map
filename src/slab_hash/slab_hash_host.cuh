@@ -72,8 +72,6 @@ std::string GpuSlabHash<KeyT, ValueT, HashFunc>::to_string() {
               std::to_string(reinterpret_cast<uint64_t>(
                       static_cast<void*>(d_table_))) +
               "\n";
-    result += "\t hash function = \t\t (" + std::to_string(hf_.x) + ", " +
-              std::to_string(hf_.y) + ")\n";
     return result;
 }
 

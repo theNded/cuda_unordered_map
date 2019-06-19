@@ -19,6 +19,8 @@
 #include <cassert>
 #include <memory>
 
+#include "../memory_heap/MemoryHeapHost.cuh"
+
 /*
  * This is the main class that will be shallowly copied into the device to be
  * used at runtime. This class does not own the allocated memory on the gpu
@@ -28,7 +30,6 @@ template <typename KeyT, typename ValueT, typename HashFunc>
 class GpuSlabHashContext {
 public:
     // fixed known parameters:
-    static constexpr uint32_t PRIME_DIVISOR_ = 4294967291u;
     static constexpr uint32_t WARP_WIDTH_ = 32;
 
     GpuSlabHashContext() : num_buckets_(0), d_table_(nullptr) {
@@ -42,15 +43,17 @@ public:
 
     __host__ void initParameters(const uint32_t num_buckets,
                                  int8_t* d_table,
-                                 AllocatorContextT* allocator_ctx) {
+                                 SlabListAllocatorContext* allocator_ctx,
+                                 MemoryHeapContext<KeyT> key_allocator_ctx) {
         num_buckets_ = num_buckets;
         d_table_ = reinterpret_cast<ConcurrentSlab*>(d_table);
-        dynamic_allocator_ = *allocator_ctx;
+        slab_list_allocator_ctx_ = *allocator_ctx;
+        key_allocator_ctx_ = key_allocator_ctx;
     }
 
-    __device__ __host__ __forceinline__ AllocatorContextT&
+    __device__ __host__ __forceinline__ SlabListAllocatorContext&
     getAllocatorContext() {
-        return dynamic_allocator_;
+        return slab_list_allocator_ctx_;
     }
 
     __device__ __host__ __forceinline__ ConcurrentSlab*
@@ -88,7 +91,8 @@ public:
 
     __device__ __forceinline__ uint32_t* getPointerFromSlab(
             const SlabAddressT& slab_address, const uint32_t lane_id) {
-        return dynamic_allocator_.getPointerFromSlab(slab_address, lane_id);
+        return slab_list_allocator_ctx_.getPointerFromSlab(slab_address,
+                                                           lane_id);
     }
 
     __device__ __forceinline__ uint32_t* getPointerFromBucket(
@@ -102,21 +106,20 @@ private:
     // TODO: add required asserts to make sure this is true in tests/debugs
     __device__ __forceinline__ SlabAllocAddressT
     allocateSlab(const uint32_t& lane_id) {
-        return dynamic_allocator_.warpAllocate(lane_id);
+        return slab_list_allocator_ctx_.warpAllocate(lane_id);
     }
 
     // a thread-wide function to free the slab that was just allocated
     __device__ __forceinline__ void freeSlab(const SlabAllocAddressT slab_ptr) {
-        dynamic_allocator_.freeUntouched(slab_ptr);
+        slab_list_allocator_ctx_.freeUntouched(slab_ptr);
     }
 
-    // === members:
     uint32_t num_buckets_;
     HashFunc hash_fn_;
 
     ConcurrentSlab* d_table_;
-    // a copy of dynamic allocator's context to be used on the GPU
-    AllocatorContextT dynamic_allocator_;
+    SlabListAllocatorContext slab_list_allocator_ctx_;
+    MemoryHeapContext<KeyT> key_allocator_ctx_;
 };
 
 /*
@@ -130,57 +133,48 @@ private:
     static constexpr uint32_t WARP_WIDTH_ = 32;
     static constexpr uint32_t PRIME_DIVISOR_ = 4294967291u;
 
-    struct hash_function {
-        uint32_t x;
-        uint32_t y;
-    } hf_;
-
-    // total number of buckets (slabs) for this hash table
     uint32_t num_buckets_;
 
     // a raw pointer to the initial allocated memory for all buckets
     int8_t* d_table_;
-    size_t slab_unit_size_;  // size of each slab unit in bytes (might differ
-                             // based on the type)
+    size_t slab_unit_size_;
 
-    // slab hash context, contains everything that a GPU application needs to be
-    // able to use this data structure
     GpuSlabHashContext<KeyT, ValueT, HashFunc> gpu_context_;
+    std::shared_ptr<MemoryHeap<KeyT>> key_allocator_;
+    std::shared_ptr<SlabListAllocator> slab_list_allocator_;
 
-    // const pointer to an allocator that all instances of slab hash are going
-    // to use. The allocator itself is not owned by this class
-    std::shared_ptr<DynamicAllocatorT> dynamic_allocator_;
     uint32_t device_idx_;
 
 public:
     GpuSlabHash(const uint32_t num_buckets,
-                const std::shared_ptr<DynamicAllocatorT>& dynamic_allocator,
+                const std::shared_ptr<SlabListAllocator>& slab_list_allocator,
+                const std::shared_ptr<MemoryHeap<KeyT>> &key_allocator,
                 uint32_t device_idx)
         : num_buckets_(num_buckets),
+          slab_list_allocator_(slab_list_allocator),
+          key_allocator_(key_allocator),
+          device_idx_(device_idx),
           d_table_(nullptr),
-          slab_unit_size_(0),
-          dynamic_allocator_(dynamic_allocator),
-          device_idx_(device_idx) {
-        assert(dynamic_allocator &&
+          slab_unit_size_(0) {
+        assert(slab_list_allocator && key_allocator &&
                "No proper dynamic allocator attached to the slab hash.");
+
         int32_t devCount = 0;
         CHECK_CUDA(cudaGetDeviceCount(&devCount));
         assert(device_idx_ < devCount);
 
         CHECK_CUDA(cudaSetDevice(device_idx_));
 
-        slab_unit_size_ =
-                GpuSlabHashContext<KeyT, ValueT, HashFunc>::getSlabUnitSize();
+        // initializing the gpu_context_:
+        slab_unit_size_ = gpu_context_.getSlabUnitSize();
 
         // allocating initial buckets:
-        CHECK_CUDA(
-                cudaMalloc((void**)&d_table_, slab_unit_size_ * num_buckets_));
-
+        CHECK_CUDA(cudaMalloc(&d_table_, slab_unit_size_ * num_buckets_));
         CHECK_CUDA(cudaMemset(d_table_, 0xFF, slab_unit_size_ * num_buckets_));
 
-        // initializing the gpu_context_:
         gpu_context_.initParameters(num_buckets_, d_table_,
-                                    dynamic_allocator_->getContextPtr());
+                                    slab_list_allocator_->getContextPtr(),
+                                    key_allocator_->gpu_context_);
     }
 
     ~GpuSlabHash() {

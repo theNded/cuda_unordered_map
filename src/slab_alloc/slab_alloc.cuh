@@ -195,7 +195,8 @@ public:
                             (super_block_index_
                              << SUPER_BLOCK_BIT_OFFSET_ALLOC_) |
                             (resident_index_ << MEM_BLOCK_BIT_OFFSET_ALLOC_) |
-                            (lane_id << MEM_UNIT_BIT_OFFSET_ALLOC_) | empty_lane;
+                            (lane_id << MEM_UNIT_BIT_OFFSET_ALLOC_) |
+                            empty_lane;
                 } else {
                     // Not successful: updating the current bitmap
                     resident_bitmap_ = read_bitmap;
@@ -262,7 +263,8 @@ public:
                             (super_block_index_
                              << SUPER_BLOCK_BIT_OFFSET_ALLOC_) |
                             (resident_index_ << MEM_BLOCK_BIT_OFFSET_ALLOC_) |
-                            (lane_id << MEM_UNIT_BIT_OFFSET_ALLOC_) | empty_lane;
+                            (lane_id << MEM_UNIT_BIT_OFFSET_ALLOC_) |
+                            empty_lane;
                 } else {
                     // Not successful: updating the current bitmap
                     resident_bitmap_ = read_bitmap;
@@ -410,11 +412,11 @@ constexpr uint32_t num_super_blocks = 32;
 constexpr uint32_t num_replicas = 1;
 }  // namespace slab_alloc_par
 
-using DynamicAllocatorT = SlabAllocLight<slab_alloc_par::log_num_mem_blocks,
+using SlabListAllocator = SlabAllocLight<slab_alloc_par::log_num_mem_blocks,
                                          slab_alloc_par::num_super_blocks,
                                          slab_alloc_par::num_replicas>;
 
-using AllocatorContextT =
+using SlabListAllocatorContext =
         SlabAllocLightContext<slab_alloc_par::log_num_mem_blocks,
                               slab_alloc_par::num_super_blocks,
                               slab_alloc_par::num_replicas>;
