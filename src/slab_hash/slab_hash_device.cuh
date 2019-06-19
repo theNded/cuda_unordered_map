@@ -32,9 +32,9 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::searchKey(
     uint32_t prev_work_queue = work_queue;
     uint32_t curr_slab_ptr = A_INDEX_POINTER;
 
-    /** Loop when we have active lanes **/
+    /** > Loop when we have active lanes **/
     while ((work_queue = __ballot_sync(0xFFFFFFFF, to_search))) {
-        /** 0. Restart from linked list head if last lane is processed **/
+        /** 0. Restart from linked list head if last lane is finished **/
         curr_slab_ptr = (prev_work_queue != work_queue) ? A_INDEX_POINTER
                                                         : curr_slab_ptr;
         uint32_t src_lane = __ffs(work_queue) - 1;
@@ -47,13 +47,15 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::searchKey(
                         ? *(getPointerFromBucket(src_bucket, lane_id))
                         : *(getPointerFromSlab(curr_slab_ptr, lane_id));
 
-        int32_t found_lane =
+        int32_t lane_found =
                 SlabHash_NS::findKeyPerWarp<KeyT>(src_key, src_unit_data);
 
         /** 1. Found in this slab **/
-        if (found_lane >= 0) {
+        if (lane_found >= 0) {
+            /* broadcast found value */
             uint32_t found_value =
-                    __shfl_sync(0xFFFFFFFF, src_unit_data, found_lane + 1, 32);
+                    __shfl_sync(0xFFFFFFFF, src_unit_data, lane_found + 1, 32);
+
             if (lane_id == src_lane) {
                 myValue = *reinterpret_cast<const ValueT*>(
                         reinterpret_cast<const unsigned char*>(&found_value));
@@ -63,6 +65,7 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::searchKey(
 
         /** 2. Not found in this slab **/
         else {
+            /* broadcast next slab */
             uint32_t curr_slab_next_ptr =
                     __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
 
@@ -87,6 +90,9 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::searchKey(
  * each thread inserts a key-value pair into the hash table
  * it is assumed all threads within a warp are present and collaborating with
  * each other with a warp-cooperative work sharing (WCWS) strategy.
+ * insertPair: ABORT if found
+ * replacePair: REPLACE if found
+ * WE DO NOT ALLOW DUPLICATE KEYS
  */
 template <typename KeyT, typename ValueT>
 __device__ void GpuSlabHashContext<KeyT, ValueT>::insertPair(
@@ -99,13 +105,14 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::insertPair(
     uint32_t prev_work_queue = 0;
     uint32_t curr_slab_ptr = A_INDEX_POINTER;
 
-    /** Loop when we have active lanes **/
+    /** > Loop when we have active lanes **/
     while ((work_queue = __ballot_sync(0xFFFFFFFF, to_be_inserted))) {
-        /** 0. Restart from linked list head if last lane is processed **/
+        /** 0. Restart from linked list head if last lane is finished **/
         curr_slab_ptr = (prev_work_queue != work_queue) ? A_INDEX_POINTER
                                                         : curr_slab_ptr;
         uint32_t src_lane = __ffs(work_queue) - 1;
         uint32_t src_bucket = __shfl_sync(0xFFFFFFFF, bucket_id, src_lane, 32);
+        uint32_t src_key = __shfl_sync(0xFFFFFFFF, myKey, src_lane, 32);
 
         /* Each lane reads a uint in the slab; lane 31 reads 'next' */
         uint32_t src_unit_data =
@@ -114,42 +121,25 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::insertPair(
                         : *(getPointerFromSlab(curr_slab_ptr, lane_id));
         uint64_t old_key_value_pair = 0;
 
-        uint32_t isEmpty =
-                (__ballot_sync(0xFFFFFFFF, src_unit_data == EMPTY_KEY)) &
-                REGULAR_NODE_KEY_MASK;
-        if (isEmpty == 0) {  // no empty slot available:
-            uint32_t curr_slab_ptr_ptr =
-                    __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
-            if (curr_slab_ptr_ptr == EMPTY_INDEX_POINTER) {
-                // allocate a new node:
-                uint32_t new_node_ptr = allocateSlab(lane_id);
+        int32_t lane_found =
+                SlabHash_NS::findKeyPerWarp<KeyT>(src_key, src_unit_data);
+        int32_t lane_empty = SlabHash_NS::findEmptyPerWarp<KeyT>(src_unit_data);
 
-                // TODO: experiment if it's better to use lane 0 instead
-                if (lane_id == 31) {
-                    const uint32_t* p =
-                            (curr_slab_ptr == A_INDEX_POINTER)
-                                    ? getPointerFromBucket(src_bucket, 31)
-                                    : getPointerFromSlab(curr_slab_ptr, 31);
-
-                    uint32_t temp =
-                            atomicCAS((unsigned int*)p, EMPTY_INDEX_POINTER,
-                                      new_node_ptr);
-                    // check whether it was successful, and
-                    // free the allocated memory otherwise
-                    if (temp != EMPTY_INDEX_POINTER) {
-                        freeSlab(new_node_ptr);
-                    }
-                }
-            } else {
-                curr_slab_ptr = curr_slab_ptr_ptr;
+        /** Branch 1: key already existing, ABORT **/
+        if (lane_found >= 0) {
+            if (lane_id == src_lane) {
+                /* free memory heap */
+                to_be_inserted = false;
             }
-        } else {  // there is an empty slot available
-            int dest_lane = __ffs(isEmpty & REGULAR_NODE_KEY_MASK) - 1;
+        }
+
+        /** Branch 2: empty slot available, try to insert **/
+        else if (lane_empty >= 0) {
             if (lane_id == src_lane) {
                 const uint32_t* p =
                         (curr_slab_ptr == A_INDEX_POINTER)
-                                ? getPointerFromBucket(src_bucket, dest_lane)
-                                : getPointerFromSlab(curr_slab_ptr, dest_lane);
+                                ? getPointerFromBucket(src_bucket, lane_empty)
+                                : getPointerFromSlab(curr_slab_ptr, lane_empty);
 
                 old_key_value_pair = atomicCAS(
                         (unsigned long long int*)p, EMPTY_PAIR_64,
@@ -160,10 +150,58 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::insertPair(
                                 *reinterpret_cast<const uint32_t*>(
                                         reinterpret_cast<const unsigned char*>(
                                                 &myKey)));
-                if (old_key_value_pair == EMPTY_PAIR_64)
-                    to_be_inserted = false;  // succesfful insertion
+
+                /** Branch 2.1: insertion succeeded **/
+                if (old_key_value_pair == EMPTY_PAIR_64) {
+                    to_be_inserted = false;
+                    // printf("inserted!\n");
+                }
+                /** Branch 2.2: failed: RESTART lane
+                 *  In the following attempt,
+                 *  > if the same key was inserted in this slot,
+                 *    we fall back to Branch 1;
+                 *  > if a diff key was inserted,
+                 *    we go to Branch 2 or 3.
+                 * **/
             }
         }
+
+        /** Branch 3: nothing found in this slab, goto next slab **/
+        else {
+            /* broadcast next slab */
+            uint32_t curr_slab_ptr_ptr =
+                    __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
+
+            /** Branch 3.1: next slab existing, restart this lane **/
+            if (curr_slab_ptr_ptr != EMPTY_INDEX_POINTER) {
+                curr_slab_ptr = curr_slab_ptr_ptr;
+            }
+
+            /** Branch 3.2: next slab empty, try to allocate one **/
+            else {
+                uint32_t new_node_ptr = allocateSlab(lane_id);
+
+                if (lane_id == 31) {
+                    const uint32_t* p =
+                            (curr_slab_ptr == A_INDEX_POINTER)
+                                    ? getPointerFromBucket(src_bucket, 31)
+                                    : getPointerFromSlab(curr_slab_ptr, 31);
+
+                    uint32_t old_next_slab_ptr =
+                            atomicCAS((unsigned int*)p, EMPTY_INDEX_POINTER,
+                                      new_node_ptr);
+
+                    /** Branch 3.2.1: other thread allocated, RESTART lane
+                     *  Same as 'goto Branch 2', but don't duplicate code. **/
+                    if (old_next_slab_ptr != EMPTY_INDEX_POINTER) {
+                        freeSlab(new_node_ptr);
+                    }
+                    // printf("slab allocated!\n");
+                    /** Branch 3.2.2: similar, RESTART lane, 'goto Branch 2' **/
+                }  // lane 31
+            }      // next slab empty
+        }          // next slab
+
         prev_work_queue = work_queue;
     }
 }
@@ -174,8 +212,6 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::deleteKey(
         const uint32_t& lane_id,
         const KeyT& myKey,
         const uint32_t bucket_id) {
-    // delete all instances of key
-
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = 0;
     uint32_t curr_slab_ptr = A_INDEX_POINTER;

@@ -19,8 +19,9 @@
 #include "slab_hash.h"
 
 template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT>::buildBulk(
-        KeyT* d_key, ValueT* d_value, uint32_t num_keys) {
+void GpuSlabHash<KeyT, ValueT>::buildBulk(KeyT* d_key,
+                                          ValueT* d_value,
+                                          uint32_t num_keys) {
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     // calling the kernel for bulk build:
     CHECK_CUDA(cudaSetDevice(device_idx_));
@@ -29,8 +30,9 @@ void GpuSlabHash<KeyT, ValueT>::buildBulk(
 }
 
 template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT>::searchIndividual(
-        KeyT* d_query, ValueT* d_result, uint32_t num_queries) {
+void GpuSlabHash<KeyT, ValueT>::searchIndividual(KeyT* d_query,
+                                                 ValueT* d_result,
+                                                 uint32_t num_queries) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_queries + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     search_table<KeyT, ValueT><<<num_blocks, BLOCKSIZE_>>>(
@@ -38,8 +40,8 @@ void GpuSlabHash<KeyT, ValueT>::searchIndividual(
 }
 
 template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT>::deleteIndividual(
-        KeyT* d_key, uint32_t num_keys) {
+void GpuSlabHash<KeyT, ValueT>::deleteIndividual(KeyT* d_key,
+                                                 uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     delete_table_keys<KeyT, ValueT>
@@ -48,8 +50,9 @@ void GpuSlabHash<KeyT, ValueT>::deleteIndividual(
 
 // perform a batch of (a mixture of) updates/searches
 template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT>::batchedOperation(
-        KeyT* d_key, ValueT* d_result, uint32_t num_ops) {
+void GpuSlabHash<KeyT, ValueT>::batchedOperation(KeyT* d_key,
+                                                 ValueT* d_result,
+                                                 uint32_t num_ops) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_ops + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     mixed_operation<KeyT, ValueT><<<num_blocks, BLOCKSIZE_>>>(
@@ -57,8 +60,7 @@ void GpuSlabHash<KeyT, ValueT>::batchedOperation(
 }
 
 template <typename KeyT, typename ValueT>
-std::string
-GpuSlabHash<KeyT, ValueT>::to_string() {
+std::string GpuSlabHash<KeyT, ValueT>::to_string() {
     std::string result;
     result += " ==== GpuSlabHash: \n";
     result += "\t Running on device \t\t " + std::to_string(device_idx_) + "\n";
@@ -76,9 +78,7 @@ GpuSlabHash<KeyT, ValueT>::to_string() {
 }
 
 template <typename KeyT, typename ValueT>
-double
-GpuSlabHash<KeyT, ValueT>::computeLoadFactor(
-        int flag = 0) {
+double GpuSlabHash<KeyT, ValueT>::computeLoadFactor(int flag = 0) {
     uint32_t* h_bucket_count = new uint32_t[num_buckets_];
     uint32_t* d_bucket_count;
     CHECK_CUDA(cudaMalloc((void**)&d_bucket_count,
@@ -104,8 +104,9 @@ GpuSlabHash<KeyT, ValueT>::computeLoadFactor(
                           cudaMemcpyDeviceToHost));
 
     int total_elements_stored = 0;
-    for (int i = 0; i < num_buckets_; i++)
+    for (int i = 0; i < num_buckets_; i++) {
         total_elements_stored += h_bucket_count[i];
+    }
 
     if (flag) {
         printf("## Total elements stored: %d (%lu bytes).\n",
@@ -124,12 +125,12 @@ GpuSlabHash<KeyT, ValueT>::computeLoadFactor(
                           cudaMemcpyDeviceToHost));
 
     // printing stats per super block:
-    if (flag == 1) {
+    if (false) {
         int total_allocated = 0;
         for (int i = 0; i < num_super_blocks; i++) {
             printf("(%d: %d -- %f) \t", i, h_count_super_blocks[i],
                    double(h_count_super_blocks[i]) /
-                           double(1024 * num_mem_units / 32));
+                           double(1024 * num_mem_units) / 32);
             if (i % 4 == 3) printf("\n");
             total_allocated += h_count_super_blocks[i];
         }

@@ -21,7 +21,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <random>
+#include <thread>
 #include <vector>
+#include "../../../../../usr/include/c++/7/chrono"
 #include "gpu_hash_table.cuh"
 
 //=======================================
@@ -51,11 +53,12 @@ int main(int argc, char** argv) {
     using ValueT = uint32_t;
     const auto f = [](const KeyT& key) { return key * 10; };
 
-    std::vector<KeyT> h_key(num_elems);
-    std::vector<ValueT> h_value(num_elems);
+    const int num_insertions = num_elems / 5;
+    std::vector<KeyT> h_key(num_insertions);
+    std::vector<ValueT> h_value(num_insertions);
     const int64_t seed = 1;
     std::mt19937 rng(seed);
-    std::vector<uint32_t> index(num_elems);
+    std::vector<uint32_t> index(num_insertions);
     std::iota(index.begin(), index.end(), 0);
     std::shuffle(index.begin(), index.end(), rng);
     for (int32_t i = 0; i < index.size(); i++) {
@@ -63,54 +66,28 @@ int main(int argc, char** argv) {
         h_value[i] = f(h_key[i]);
     }
 
-    /******** Query data (part from first half, part from second half) *******/
-    uint32_t num_queries = num_elems / 2;
-    float existing_ratio = 0.6f;
-    uint32_t num_existing = static_cast<uint32_t>(existing_ratio * num_queries);
-    std::vector<KeyT> h_query(num_queries);
-    std::vector<ValueT> h_result_gt(num_queries);
-    std::vector<ValueT> h_result(num_queries);
-
-    /* from the 1st half */
-    for (int i = 0; i < num_existing; i++) {
-        h_query[i] = h_key[num_elems / 2 - 1 - i];
-        h_result_gt[i] = f(h_query[i]);
-    }
-    /* from the 2nd half */
-    for (int i = 0; i < (num_queries - num_existing); i++) {
-        h_query[num_existing + i] = h_key[num_elems / 2 + i];
-        h_result_gt[num_existing + i] = SEARCH_NOT_FOUND;
-    }
-    /* shuffle */
-    std::vector<int> q_index(num_queries);
-    std::iota(q_index.begin(), q_index.end(), 0);
-    std::shuffle(q_index.begin(), q_index.end(), rng);
-    for (int i = 0; i < num_queries; i++) {
-        std::swap(h_query[i], h_query[q_index[i]]);
-        std::swap(h_result_gt[i], h_result_gt[q_index[i]]);
-    }
-
-
     /******* Instantiate hash table ********/
+    printf("num elems: %d, num buckets: %d -- num insertions: %d\n", num_elems,
+           num_buckets, num_insertions);
     GpuHashTable<KeyT, ValueT> hash_table(num_elems, num_buckets, 0, seed);
 
-    /****** Insert and query first half ********/
+    /****** Insert and query ********/
     float build_time =
-            hash_table.Insert(h_key.data(), h_value.data(), num_elems / 2);
+            hash_table.Insert(h_key.data(), h_value.data(), num_insertions);
     printf("1) Insert finished in %.3f ms (%.3f M elements/s)\n", build_time,
-           double(num_elems / 2) / (build_time * 1000.0));
+           double(num_insertions) / (build_time * 1000.0));
 
-    /* Expect 0.6 of them found */
+    std::vector<ValueT> h_result(num_insertions);
     float search_time =
-            hash_table.Search(h_query.data(), h_result.data(), num_queries);
-    printf("2) Query finished in %.3f ms (%.3f M queries/s)\n",
-           search_time, double(num_queries) / (search_time * 1000.0));
+            hash_table.Search(h_key.data(), h_result.data(), num_insertions);
+    printf("2) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
+           double(num_insertions) / (search_time * 1000.0));
 
     bool search_success = true;
-    for (int i = 0; i < num_queries; i++) {
-        if (h_result_gt[i] != h_result[i]) {
-            printf("### Result at index %d: [%d] -> %d, expected: %d\n",
-                   i, h_query[i], h_result[i], h_result_gt[i]);
+    for (int i = 0; i < num_insertions; i++) {
+        if (f(h_key[i]) != h_result[i]) {
+            printf("### Result at index %d: [%d] -> %d, expected: %d\n", i,
+                   h_key[i], h_result[i], f(h_key[i]));
             search_success = false;
         }
     }
@@ -121,23 +98,30 @@ int main(int argc, char** argv) {
     printf("The load factor is %.2f, number of buckets %d\n", load_factor,
            num_buckets);
 
-    /****** Insert and query second half ********/
-    build_time = hash_table.Insert(
-                    h_key.data() + num_elems / 2,
-                    h_value.data() + num_elems / 2, num_elems / 2);
-    printf("3) Insert finished in %.3f ms (%.3f M elements/s)\n", build_time,
-            double(num_elems / 2) / (build_time * 1000.0));
+    /** Disturb the value **/
+    for (auto& v : h_value) {
+        v += 1;
+    }
 
-    /* Expect all of them found */
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    /** Insert again **/
+    build_time =
+            hash_table.Insert(h_key.data(), h_value.data(), num_insertions);
+    printf("3) Insert finished in %.3f ms (%.3f M elements/s)\n", build_time,
+           double(num_insertions) / (build_time * 1000.0));
+
     search_time =
-            hash_table.Search(h_query.data(), h_result.data(), num_queries);
-    printf("4) Query finished in %.3f ms (%.3f M queries/s)\n",
-           search_time, double(num_queries) / (search_time * 1000.0));
+            hash_table.Search(h_key.data(), h_result.data(), num_insertions);
+    printf("4) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
+           double(num_insertions) / (search_time * 1000.0));
+
     search_success = true;
-    for (int i = 0; i < num_queries; i++) {
-        if (f(h_query[i]) != h_result[i]) {
-            printf("### Result at index %d: [%d] -> %d, expected: %d\n",
-                   i, h_query[i], h_result[i], h_result_gt[i]);
+    for (int i = 0; i < num_insertions; i++) {
+        /* We expect nothing is changed */
+        if (f(h_key[i]) != h_result[i]) {
+            printf("### Result at index %d: [%d] -> %d, expected: %d\n", i,
+                   h_key[i], h_result[i], f(h_key[i]));
             search_success = false;
         }
     }

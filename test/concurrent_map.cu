@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     if (search_success) {
         printf("2) Validation done\n");
     }
-    double load_factor = hash_table.measureLoadFactor();
+    double load_factor = hash_table.measureLoadFactor(1);
     printf("The load factor is %.2f, number of buckets %d\n", load_factor,
            num_buckets);
 
@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
     if (search_success) {
         printf("4) Validation done\n");
     }
-    load_factor = hash_table.measureLoadFactor();
+    load_factor = hash_table.measureLoadFactor(1);
     printf("The load factor is %.2f, number of buckets %d\n", load_factor,
            num_buckets);
 
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
         printf("6) Validation done\n");
     }
 
-    load_factor = hash_table.measureLoadFactor();
+    load_factor = hash_table.measureLoadFactor(1);
     printf("The load factor is %.2f, number of buckets %d\n", load_factor,
            num_buckets);
 
