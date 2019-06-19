@@ -9,6 +9,18 @@
 
 #include <cassert>
 
+template<typename T>
+__global__
+void ResetMemoryHeapKernel(MemoryHeapContext<T> ctx) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < ctx.max_capacity_) {
+        ctx.value_at(i) = T(); /* This is not necessary. */
+        ctx.internal_addr_at(i) = i;
+
+//        printf("[%d]: %d %d\n", i, ctx.value_at(i), ctx.internal_addr_at(i));
+    }
+}
+
 /**
  * Client end
  */
@@ -19,6 +31,17 @@ MemoryHeap<T>::MemoryHeap(int max_capacity) {
     CHECK_CUDA(cudaMalloc(&(gpu_context_.heap_counter_), sizeof(int)));
     CHECK_CUDA(cudaMalloc(&(gpu_context_.heap_), sizeof(int) * max_capacity_));
     CHECK_CUDA(cudaMalloc(&(gpu_context_.data_), sizeof(T) * max_capacity_));
+
+    const int blocks = (max_capacity_ + 128 - 1) / 128;
+    const int threads = 128;
+
+    ResetMemoryHeapKernel << < blocks, threads >> > (gpu_context_);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaGetLastError());
+
+    int heap_counter = 0;
+    CHECK_CUDA(cudaMemcpy(gpu_context_.heap_counter_, &heap_counter,
+                         sizeof(int), cudaMemcpyHostToDevice));
 }
 
 template <typename T>

@@ -41,8 +41,8 @@ int main(int argc, char** argv) {
 
     /******** Hash table meta data ********/
     uint32_t num_elems = 1 << 20;
-    float expected_chain = 0.6f;
-    uint32_t num_elems_per_bucket = 100;
+    float expected_chain = 0.8f;
+    uint32_t num_elems_per_bucket = 5;
     uint32_t expected_elems_per_bucket = expected_chain * num_elems_per_bucket;
     uint32_t num_buckets = (num_elems + expected_elems_per_bucket - 1) /
                            expected_elems_per_bucket;
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     using HashFunc = HasherUint32;
     const auto f = [](const KeyT& key) { return key * 10; };
 
-    const int num_insertions = num_elems / 5;
+    const int num_insertions = num_elems / 2;
     std::vector<KeyT> h_key(num_insertions);
     std::vector<ValueT> h_value(num_insertions);
     const int64_t seed = 1;

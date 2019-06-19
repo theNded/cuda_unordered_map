@@ -27,6 +27,9 @@
  * @TODO: If I have time I will modify CSAPP Malloc Lab's code here.
  */
 
+#include <assert.h>
+
+#define CUDA_DEBUG_ENABLE_ASSERTION
 template <typename T>
 class MemoryHeapContext {
 public:

@@ -47,18 +47,13 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::searchKey(
                         ? *(getPointerFromBucket(src_bucket, lane_id))
                         : *(getPointerFromSlab(curr_slab_ptr, lane_id));
 
-        uint32_t valid_src_unit_data =
-                (((1 << lane_id) & REGULAR_NODE_KEY_MASK) &&
-                 (src_unit_data != EMPTY_KEY))
-                        ? src_unit_data
-                        : EMPTY_KEY;
-        bool is_lane_found =
-                (valid_src_unit_data != EMPTY_KEY) &&
-                key_allocator_ctx_.value_at(valid_src_unit_data) == src_key;
-
-        int32_t lane_found = __ffs(__ballot_sync(0xFFFFFFFF, is_lane_found) &
-                                   REGULAR_NODE_KEY_MASK) -
-                             1;
+        int32_t lane_found =
+                __ffs(__ballot_sync(0xFFFFFFFF,
+                                    (src_unit_data != EMPTY_KEY &&
+                                     key_allocator_ctx_.value_at(
+                                             src_unit_data) == src_key)) &
+                      REGULAR_NODE_KEY_MASK) -
+                1;
 
         /** 1. Found in this slab **/
         if (lane_found >= 0) {
@@ -115,13 +110,6 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::insertPair(
     uint32_t prev_work_queue = 0;
     uint32_t curr_slab_ptr = A_INDEX_POINTER;
 
-    /** Allocation should be finished here, otherwise results are unexpected **/
-    int key_addr = -1;
-    if (to_be_inserted) {
-        key_addr = key_allocator_ctx_.Malloc();
-        key_allocator_ctx_.value_at(key_addr) = myKey;
-    }
-
     /** > Loop when we have active lanes **/
     while ((work_queue = __ballot_sync(0xFFFFFFFF, to_be_inserted))) {
         /** 0. Restart from linked list head if last lane is finished **/
@@ -138,39 +126,38 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::insertPair(
                         : *(getPointerFromSlab(curr_slab_ptr, lane_id));
         uint64_t old_key_value_pair = 0;
 
-        uint32_t valid_src_unit_data =
-                (((1 << lane_id) & REGULAR_NODE_KEY_MASK) &&
-                 (src_unit_data != EMPTY_KEY))
-                        ? src_unit_data
-                        : EMPTY_KEY;
-        bool is_lane_found =
-                (valid_src_unit_data != EMPTY_KEY) &&
-                key_allocator_ctx_.value_at(valid_src_unit_data) == src_key;
+        src_unit_data = (((1 << lane_id) & REGULAR_NODE_KEY_MASK)
+                         && (src_unit_data != EMPTY_KEY)) ?
+                                 src_unit_data : EMPTY_KEY;
 
-        int32_t lane_found = __ffs(__ballot_sync(0xFFFFFFFF, is_lane_found) &
-                                   REGULAR_NODE_KEY_MASK) -
-                             1;
+        int32_t lane_found =
+                __ffs(__ballot_sync(
+                              0xFFFFFFFF,
+                                      (src_unit_data != EMPTY_KEY) &&
+                                      (key_allocator_ctx_.value_at(
+                                               src_unit_data) == src_key)) &
+                      REGULAR_NODE_KEY_MASK) -
+                1;
 
         int32_t lane_empty = SlabHash_NS::findEmptyPerWarp<KeyT>(src_unit_data);
 
         /** Branch 1: key already existing, ABORT **/
         if (lane_found >= 0) {
             if (lane_id == src_lane) {
-                /* free memory heap */
                 to_be_inserted = false;
-                key_allocator_ctx_.Free(key_addr);
             }
         }
 
         /** Branch 2: empty slot available, try to insert **/
         else if (lane_empty >= 0) {
             if (lane_id == src_lane) {
-                // TODO: read specification and check why we cannot put malloc
-                // here
                 const uint32_t* p =
                         (curr_slab_ptr == A_INDEX_POINTER)
                                 ? getPointerFromBucket(src_bucket, lane_empty)
                                 : getPointerFromSlab(curr_slab_ptr, lane_empty);
+
+                int key_addr = key_allocator_ctx_.Malloc();
+                key_allocator_ctx_.value_at(key_addr) = src_key;
 
                 old_key_value_pair = atomicCAS(
                         (unsigned long long int*)p, EMPTY_PAIR_64,
@@ -185,6 +172,8 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::insertPair(
                 /** Branch 2.1: insertion succeeded **/
                 if (old_key_value_pair == EMPTY_PAIR_64) {
                     to_be_inserted = false;
+//                    printf("inserted [%d] %d %d!\n", src_key, key_addr,
+//                           myValue);
                 }
                 /** Branch 2.2: failed: RESTART lane
                  *  In the following attempt,
@@ -193,6 +182,9 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::insertPair(
                  *  > if a diff key was inserted,
                  *    we go to Branch 2 or 3.
                  * **/
+                else {
+                    key_allocator_ctx_.Free(key_addr);
+                }
             }
         }
 
@@ -268,32 +260,12 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::deleteKey(
                         ? *(getPointerFromBucket(src_bucket, lane_id))
                         : *(getPointerFromSlab(curr_slab_ptr, lane_id));
 
-        uint32_t valid_src_unit_data =
-                (((1 << lane_id) & REGULAR_NODE_KEY_MASK) &&
-                 (src_unit_data != EMPTY_KEY))
-                ? src_unit_data
-                : EMPTY_KEY;
-        bool is_lane_found =
-                (valid_src_unit_data != EMPTY_KEY) &&
-                key_allocator_ctx_.value_at(valid_src_unit_data) == src_key;
+        // looking for the item to be deleted:
+        uint32_t isFound =
+                (__ballot_sync(0xFFFFFFFF, src_unit_data == src_key)) &
+                REGULAR_NODE_KEY_MASK;
 
-        int32_t lane_found = __ffs(__ballot_sync(0xFFFFFFFF, is_lane_found) &
-                                   REGULAR_NODE_KEY_MASK) -
-                             1;
-
-        if (lane_found >= 0) {  // The wanted key found:
-            uint32_t src_addr = __shfl_sync(0xFFFFFFFF, src_unit_data, lane_found, 32);
-            if (lane_id == src_lane) {
-                uint32_t* p =
-                        (curr_slab_ptr == A_INDEX_POINTER)
-                        ? getPointerFromBucket(src_bucket, lane_found)
-                        : getPointerFromSlab(curr_slab_ptr, lane_found);
-                // deleting that item (no atomics)
-                key_allocator_ctx_.Free(src_addr);
-                *(reinterpret_cast<uint64_t*>(p)) = EMPTY_PAIR_64;
-                to_be_deleted = false;
-            }
-        } else {  // no matching slot found:
+        if (isFound == 0) {  // no matching slot found:
             uint32_t curr_slab_ptr_ptr =
                     __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
             if (curr_slab_ptr_ptr == EMPTY_INDEX_POINTER) {
@@ -301,6 +273,17 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::deleteKey(
                 to_be_deleted = false;
             } else {
                 curr_slab_ptr = curr_slab_ptr_ptr;
+            }
+        } else {  // The wanted key found:
+            int dest_lane = __ffs(isFound & REGULAR_NODE_KEY_MASK) - 1;
+            if (lane_id == src_lane) {
+                uint32_t* p =
+                        (curr_slab_ptr == A_INDEX_POINTER)
+                                ? getPointerFromBucket(src_bucket, dest_lane)
+                                : getPointerFromSlab(curr_slab_ptr, dest_lane);
+                // deleting that item (no atomics)
+                *(reinterpret_cast<uint64_t*>(p)) = EMPTY_PAIR_64;
+                to_be_deleted = false;
             }
         }
         prev_work_queue = work_queue;
