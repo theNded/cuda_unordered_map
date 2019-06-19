@@ -23,11 +23,14 @@
 #include <random>
 #include <thread>
 #include <vector>
-#include "../../../../../usr/include/c++/7/chrono"
 #include "gpu_hash_table.cuh"
 
 //=======================================
 #define DEVICE_ID 0
+
+struct HasherUint {
+    __device__ __host__ size_t operator()(const uint32_t& key) { return 0; }
+};
 
 int main(int argc, char** argv) {
     //=========
@@ -51,6 +54,7 @@ int main(int argc, char** argv) {
     /******** Insertion data ********/
     using KeyT = uint32_t;
     using ValueT = uint32_t;
+    using HashFunc = HasherUint;
     const auto f = [](const KeyT& key) { return key * 10; };
 
     const int num_insertions = num_elems / 5;
@@ -69,7 +73,8 @@ int main(int argc, char** argv) {
     /******* Instantiate hash table ********/
     printf("num elems: %d, num buckets: %d -- num insertions: %d\n", num_elems,
            num_buckets, num_insertions);
-    GpuHashTable<KeyT, ValueT> hash_table(num_elems, num_buckets, 0, seed);
+    GpuHashTable<KeyT, ValueT, HashFunc> hash_table(num_elems, num_buckets, 0,
+                                                    seed);
 
     /****** Insert and query ********/
     float build_time =

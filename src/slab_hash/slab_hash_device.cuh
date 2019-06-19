@@ -21,8 +21,8 @@
 //================================================
 // Individual Search Unit:
 //================================================
-template <typename KeyT, typename ValueT>
-__device__ void GpuSlabHashContext<KeyT, ValueT>::searchKey(
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::searchKey(
         bool& to_search,
         const uint32_t& lane_id,
         const KeyT& myKey,
@@ -94,8 +94,8 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::searchKey(
  * replacePair: REPLACE if found
  * WE DO NOT ALLOW DUPLICATE KEYS
  */
-template <typename KeyT, typename ValueT>
-__device__ void GpuSlabHashContext<KeyT, ValueT>::insertPair(
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::insertPair(
         bool& to_be_inserted,
         const uint32_t& lane_id,
         const KeyT& myKey,
@@ -206,8 +206,8 @@ __device__ void GpuSlabHashContext<KeyT, ValueT>::insertPair(
     }
 }
 
-template <typename KeyT, typename ValueT>
-__device__ void GpuSlabHashContext<KeyT, ValueT>::deleteKey(
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::deleteKey(
         bool& to_be_deleted,
         const uint32_t& lane_id,
         const KeyT& myKey,

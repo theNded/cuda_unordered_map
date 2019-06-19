@@ -19,11 +19,12 @@
 #include "slab_hash.h"
 
 //=== Individual search kernel:
-template <typename KeyT, typename ValueT>
-__global__ void search_table(KeyT* d_queries,
-                             ValueT* d_results,
-                             uint32_t num_queries,
-                             GpuSlabHashContext<KeyT, ValueT> slab_hash) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void search_table(
+        KeyT* d_queries,
+        ValueT* d_results,
+        uint32_t num_queries,
+        GpuSlabHashContext<KeyT, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -53,11 +54,12 @@ __global__ void search_table(KeyT* d_queries,
     }
 }
 
-template <typename KeyT, typename ValueT>
-__global__ void build_table_kernel(KeyT* d_key,
-                                   ValueT* d_value,
-                                   uint32_t num_keys,
-                                   GpuSlabHashContext<KeyT, ValueT> slab_hash) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void build_table_kernel(
+        KeyT* d_key,
+        ValueT* d_value,
+        uint32_t num_keys,
+        GpuSlabHashContext<KeyT, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -81,11 +83,12 @@ __global__ void build_table_kernel(KeyT* d_key,
     slab_hash.insertPair(to_insert, lane_id, myKey, myValue, myBucket);
 }
 
-template <typename KeyT, typename ValueT>
-__global__ void mixed_operation(uint32_t* d_operations,
-                                   uint32_t* d_results,
-                                   uint32_t num_operations,
-                                   GpuSlabHashContext<KeyT, ValueT> slab_hash) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void mixed_operation(
+        uint32_t* d_operations,
+        uint32_t* d_results,
+        uint32_t num_operations,
+        GpuSlabHashContext<KeyT, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -126,10 +129,11 @@ __global__ void mixed_operation(uint32_t* d_operations,
     }
 }
 
-template <typename KeyT, typename ValueT>
-__global__ void delete_table_keys(KeyT* d_key_deleted,
-                                  uint32_t num_keys,
-                                  GpuSlabHashContext<KeyT, ValueT> slab_hash) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void delete_table_keys(
+        KeyT* d_key_deleted,
+        uint32_t num_keys,
+        GpuSlabHashContext<KeyT, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -158,10 +162,11 @@ __global__ void delete_table_keys(KeyT* d_key_deleted,
  * This kernel can be used to compute total number of elements within each
  * bucket. The final results per bucket is stored in d_count_result array
  */
-template <typename KeyT, typename ValueT>
-__global__ void bucket_count_kernel(GpuSlabHashContext<KeyT, ValueT> slab_hash,
-                                    uint32_t* d_count_result,
-                                    uint32_t num_buckets) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void bucket_count_kernel(
+        GpuSlabHashContext<KeyT, ValueT, HashFunc> slab_hash,
+        uint32_t* d_count_result,
+        uint32_t num_buckets) {
     // global warp ID
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t wid = tid >> 5;
@@ -200,10 +205,10 @@ __global__ void bucket_count_kernel(GpuSlabHashContext<KeyT, ValueT> slab_hash,
  * and store number of allocated slabs.
  * TODO: this should be moved into allocator's codebase (violation of layers)
  */
-template <typename KeyT, typename ValueT>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __global__ void compute_stats_allocators(
         uint32_t* d_count_super_block,
-        GpuSlabHashContext<KeyT, ValueT> slab_hash) {
+        GpuSlabHashContext<KeyT, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     int num_bitmaps =

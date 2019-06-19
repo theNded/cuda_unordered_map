@@ -19,7 +19,7 @@
 #include "slab_hash/instantiate.cuh"
 
 /* Lightweight wrapper to handle host input */
-template <typename KeyT, typename ValueT>
+template <typename KeyT, typename ValueT, typename HashFunc>
 class GpuHashTable {
 private:
     uint32_t max_keys_;
@@ -33,7 +33,7 @@ public:
 
     /* Allocator for the @slab linked lists */
     std::shared_ptr<DynamicAllocatorT> dynamic_allocator_;
-    std::shared_ptr<GpuSlabHash<KeyT, ValueT>> slab_hash_;
+    std::shared_ptr<GpuSlabHash<KeyT, ValueT, HashFunc>> slab_hash_;
 
     KeyT* d_key_;
     ValueT* d_value_;
@@ -74,7 +74,7 @@ public:
         dynamic_allocator_ = std::make_shared<DynamicAllocatorT>();
 
         // slab hash:
-        slab_hash_ = std::make_shared<GpuSlabHash<KeyT, ValueT>>(
+        slab_hash_ = std::make_shared<GpuSlabHash<KeyT, ValueT, HashFunc>>(
                 num_buckets_, dynamic_allocator_, cuda_device_idx_, seed_,
                 identity_hash_);
     }

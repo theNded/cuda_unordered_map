@@ -24,7 +24,7 @@
  * used at runtime. This class does not own the allocated memory on the gpu
  * (i.e., d_table_)
  */
-template <typename KeyT, typename ValueT>
+template <typename KeyT, typename ValueT, typename HashFunc>
 class GpuSlabHashContext {
 public:
     // fixed known parameters:
@@ -128,7 +128,7 @@ private:
 /*
  * This class owns the allocated memory for the hash table
  */
-template <typename KeyT, typename ValueT>
+template <typename KeyT, typename ValueT, typename HashFunc>
 class GpuSlabHash {
 private:
     // fixed known parameters:
@@ -151,7 +151,7 @@ private:
 
     // slab hash context, contains everything that a GPU application needs to be
     // able to use this data structure
-    GpuSlabHashContext<KeyT, ValueT> gpu_context_;
+    GpuSlabHashContext<KeyT, ValueT, HashFunc> gpu_context_;
 
     // const pointer to an allocator that all instances of slab hash are going
     // to use. The allocator itself is not owned by this class
@@ -177,7 +177,8 @@ public:
 
         CHECK_CUDA(cudaSetDevice(device_idx_));
 
-        slab_unit_size_ = GpuSlabHashContext<KeyT, ValueT>::getSlabUnitSize();
+        slab_unit_size_ =
+                GpuSlabHashContext<KeyT, ValueT, HashFunc>::getSlabUnitSize();
 
         // allocating initial buckets:
         CHECK_CUDA(

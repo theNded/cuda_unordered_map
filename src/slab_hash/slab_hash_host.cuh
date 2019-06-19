@@ -18,49 +18,49 @@
 
 #include "slab_hash.h"
 
-template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT>::buildBulk(KeyT* d_key,
+template <typename KeyT, typename ValueT, typename HashFunc>
+void GpuSlabHash<KeyT, ValueT, HashFunc>::buildBulk(KeyT* d_key,
                                           ValueT* d_value,
                                           uint32_t num_keys) {
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     // calling the kernel for bulk build:
     CHECK_CUDA(cudaSetDevice(device_idx_));
-    build_table_kernel<KeyT, ValueT><<<num_blocks, BLOCKSIZE_>>>(
+    build_table_kernel<KeyT, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
             d_key, d_value, num_keys, gpu_context_);
 }
 
-template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT>::searchIndividual(KeyT* d_query,
+template <typename KeyT, typename ValueT, typename HashFunc>
+void GpuSlabHash<KeyT, ValueT, HashFunc>::searchIndividual(KeyT* d_query,
                                                  ValueT* d_result,
                                                  uint32_t num_queries) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_queries + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    search_table<KeyT, ValueT><<<num_blocks, BLOCKSIZE_>>>(
+    search_table<KeyT, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
             d_query, d_result, num_queries, gpu_context_);
 }
 
-template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT>::deleteIndividual(KeyT* d_key,
+template <typename KeyT, typename ValueT, typename HashFunc>
+void GpuSlabHash<KeyT, ValueT, HashFunc>::deleteIndividual(KeyT* d_key,
                                                  uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    delete_table_keys<KeyT, ValueT>
+    delete_table_keys<KeyT, ValueT, HashFunc>
             <<<num_blocks, BLOCKSIZE_>>>(d_key, num_keys, gpu_context_);
 }
 
 // perform a batch of (a mixture of) updates/searches
-template <typename KeyT, typename ValueT>
-void GpuSlabHash<KeyT, ValueT>::batchedOperation(KeyT* d_key,
+template <typename KeyT, typename ValueT, typename HashFunc>
+void GpuSlabHash<KeyT, ValueT, HashFunc>::batchedOperation(KeyT* d_key,
                                                  ValueT* d_result,
                                                  uint32_t num_ops) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_ops + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    mixed_operation<KeyT, ValueT><<<num_blocks, BLOCKSIZE_>>>(
+    mixed_operation<KeyT, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
             d_key, d_result, num_ops, gpu_context_);
 }
 
-template <typename KeyT, typename ValueT>
-std::string GpuSlabHash<KeyT, ValueT>::to_string() {
+template <typename KeyT, typename ValueT, typename HashFunc>
+std::string GpuSlabHash<KeyT, ValueT, HashFunc>::to_string() {
     std::string result;
     result += " ==== GpuSlabHash: \n";
     result += "\t Running on device \t\t " + std::to_string(device_idx_) + "\n";
@@ -77,8 +77,8 @@ std::string GpuSlabHash<KeyT, ValueT>::to_string() {
     return result;
 }
 
-template <typename KeyT, typename ValueT>
-double GpuSlabHash<KeyT, ValueT>::computeLoadFactor(int flag = 0) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+double GpuSlabHash<KeyT, ValueT, HashFunc>::computeLoadFactor(int flag = 0) {
     uint32_t* h_bucket_count = new uint32_t[num_buckets_];
     uint32_t* d_bucket_count;
     CHECK_CUDA(cudaMalloc((void**)&d_bucket_count,
@@ -97,7 +97,7 @@ double GpuSlabHash<KeyT, ValueT>::computeLoadFactor(int flag = 0) {
     // counting the number of inserted elements:
     const uint32_t blocksize = 128;
     const uint32_t num_blocks = (num_buckets_ * 32 + blocksize - 1) / blocksize;
-    bucket_count_kernel<KeyT, ValueT><<<num_blocks, blocksize>>>(
+    bucket_count_kernel<KeyT, ValueT, HashFunc><<<num_blocks, blocksize>>>(
             gpu_context_, d_bucket_count, num_buckets_);
     CHECK_CUDA(cudaMemcpy(h_bucket_count, d_bucket_count,
                           sizeof(uint32_t) * num_buckets_,
