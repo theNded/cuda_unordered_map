@@ -84,7 +84,7 @@ __global__ void build_table_kernel(
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
-__global__ void mixed_operation(
+__global__ void MixedOperation(
         uint32_t* d_operations,
         uint32_t* d_results,
         uint32_t num_operations,

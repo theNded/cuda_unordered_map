@@ -27,14 +27,6 @@
 //=======================================
 #define DEVICE_ID 0
 
-struct HasherUint {
-    __device__ __host__
-    size_t operator() (const uint32_t &key) {
-        return 0;
-    }
-};
-
-
 int main(int argc, char** argv) {
     //=========
     int devCount;
@@ -57,7 +49,7 @@ int main(int argc, char** argv) {
     /******** Insertion data ********/
     using KeyT = uint32_t;
     using ValueT = uint32_t;
-    using HashFunc = HasherUint;
+    using HashFunc = HasherUint32;
     const auto f = [](const KeyT& key) { return key * 10; };
 
     std::vector<KeyT> h_key(num_elems);
@@ -101,7 +93,7 @@ int main(int argc, char** argv) {
 
 
     /******* Instantiate hash table ********/
-    GpuHashTable<KeyT, ValueT, HashFunc> hash_table(num_elems, num_buckets, 0, seed);
+    GpuHashTable<KeyT, ValueT, HashFunc> hash_table(num_elems, num_buckets, 0);
 
     /****** Insert and query first half ********/
     float build_time =

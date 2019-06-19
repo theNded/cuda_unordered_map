@@ -31,8 +31,7 @@ public:
     static constexpr uint32_t PRIME_DIVISOR_ = 4294967291u;
     static constexpr uint32_t WARP_WIDTH_ = 32;
 
-    GpuSlabHashContext()
-        : num_buckets_(0), hash_x_(0), hash_y_(0), d_table_(nullptr) {
+    GpuSlabHashContext() : num_buckets_(0), d_table_(nullptr) {
         // a single slab on a ConcurrentMap should be 128 bytes
         assert(sizeof(ConcurrentSlab) == (WARP_WIDTH_ * sizeof(uint32_t)));
     }
@@ -42,13 +41,9 @@ public:
     static std::string getSlabHashTypeName() { return "ConcurrentMap"; }
 
     __host__ void initParameters(const uint32_t num_buckets,
-                                 const uint32_t hash_x,
-                                 const uint32_t hash_y,
                                  int8_t* d_table,
                                  AllocatorContextT* allocator_ctx) {
         num_buckets_ = num_buckets;
-        hash_x_ = hash_x;
-        hash_y_ = hash_y;
         d_table_ = reinterpret_cast<ConcurrentSlab*>(d_table);
         dynamic_allocator_ = *allocator_ctx;
     }
@@ -65,7 +60,7 @@ public:
 
     __device__ __host__ __forceinline__ uint32_t
     computeBucket(const KeyT& key) const {
-        return (((hash_x_ ^ key) + hash_y_) % PRIME_DIVISOR_) % num_buckets_;
+        return hash_fn_(key) % num_buckets_;
     }
 
     // threads in a warp cooperate with each other to insert key-value pairs
@@ -117,8 +112,7 @@ private:
 
     // === members:
     uint32_t num_buckets_;
-    uint32_t hash_x_;
-    uint32_t hash_y_;
+    HashFunc hash_fn_;
 
     ConcurrentSlab* d_table_;
     // a copy of dynamic allocator's context to be used on the GPU
@@ -161,9 +155,7 @@ private:
 public:
     GpuSlabHash(const uint32_t num_buckets,
                 const std::shared_ptr<DynamicAllocatorT>& dynamic_allocator,
-                uint32_t device_idx,
-                const time_t seed = 0,
-                const bool identity_hash = false)
+                uint32_t device_idx)
         : num_buckets_(num_buckets),
           d_table_(nullptr),
           slab_unit_size_(0),
@@ -186,18 +178,8 @@ public:
 
         CHECK_CUDA(cudaMemset(d_table_, 0xFF, slab_unit_size_ * num_buckets_));
 
-        // creating a random number generator:
-        if (!identity_hash) {
-            std::mt19937 rng(seed ? seed : time(0));
-            hf_.x = rng() % PRIME_DIVISOR_;
-            if (hf_.x < 1) hf_.x = 1;
-            hf_.y = rng() % PRIME_DIVISOR_;
-        } else {
-            hf_ = {0u, 0u};
-        }
-
         // initializing the gpu_context_:
-        gpu_context_.initParameters(num_buckets_, hf_.x, hf_.y, d_table_,
+        gpu_context_.initParameters(num_buckets_, d_table_,
                                     dynamic_allocator_->getContextPtr());
     }
 
