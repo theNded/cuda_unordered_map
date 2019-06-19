@@ -27,7 +27,7 @@ static constexpr uint32_t WARP_WIDTH = 32;
 static constexpr uint32_t SEARCH_NOT_FOUND = 0xFFFFFFFF;
 static constexpr uint32_t ACTIVE_LANE_MASK = 0xFFFFFFFF;
 
-static constexpr uint32_t A_INDEX_POINTER = 0xFFFFFFFE;
+static constexpr uint32_t HEAD_SLAB_POINTER = 0xFFFFFFFE;
 static constexpr uint32_t EMPTY_INDEX_POINTER = 0xFFFFFFFF;
 
 static constexpr uint32_t BASE_UNIT_SIZE = 32;
