@@ -25,7 +25,7 @@
 #include <string>
 
 #include "experiments.cuh"
-//
+
 inline char* getCmdOption(char** begin, char** end, const std::string& option) {
     char** itr = std::find(begin, end, option);
     if (itr != end && ++itr != end) {
@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
 
     using KeyT = uint32_t;
     using ValueT = uint32_t;
-    using HashFunc = HashUint32;
+    using HashFunc = HasherUint32;
 
     // running the actual experiment
     switch (mode) {
@@ -167,9 +167,6 @@ int main(int argc, char** argv) {
             load_factor_bulk_experiment<KeyT, ValueT, HashFunc >(
                     num_keys, num_queries, filename, device_idx, existing_ratio,
                     num_iter, false, lf_bulk_num_sample, lf_bulk_step);
-            break;
-        case 2:  // bulk build, load factor fixed, num elements changing
-            std::cout << "Bulk search deprecated.\n";
             break;
         case 3:  // concurrent experiment:
             concurrent_batched_op_load_factor_experiment<KeyT, ValueT, HashFunc >(

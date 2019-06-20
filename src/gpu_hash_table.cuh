@@ -44,6 +44,7 @@ public:
 
     /* Allocator for the @slab linked lists */
     std::shared_ptr<MemoryHeap<KeyT>> key_allocator_;
+    std::shared_ptr<MemoryHeap<ValueT>> value_allocator_;
     std::shared_ptr<SlabListAllocator> slab_list_allocator_;
     std::shared_ptr<GpuSlabHash<KeyT, ValueT, HashFunc>> slab_hash_;
 
@@ -75,10 +76,11 @@ public:
         // allocate an initialize the allocator:
         slab_list_allocator_ = std::make_shared<SlabListAllocator>();
         key_allocator_ = std::make_shared<MemoryHeap<KeyT>>(max_keys_);
+        value_allocator_ = std::make_shared<MemoryHeap<ValueT>>(max_keys_);
 
         slab_hash_ = std::make_shared<GpuSlabHash<KeyT, ValueT, HashFunc>>(
                 num_buckets_, slab_list_allocator_, key_allocator_,
-                cuda_device_idx_);
+                value_allocator_, cuda_device_idx_);
     }
 
     ~GpuHashTable() {

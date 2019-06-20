@@ -31,7 +31,7 @@
  * In this experiment, we compute the bulk build time versus different load
  * factors.
  */
-template <typename KeyT, typename ValueT>
+template <typename KeyT, typename ValueT, typename HashFunc>
 void load_factor_bulk_experiment(uint32_t num_keys,
                                  uint32_t num_queries,
                                  std::string filename,
@@ -118,8 +118,8 @@ void load_factor_bulk_experiment(uint32_t num_keys,
         double load_factor = 0.0;
         for (int iter = 0; iter < num_iter; iter++) {
             // building the hash table:
-            GpuHashTable<KeyT, ValueT> hash_table(num_keys, num_buckets,
-                                                  device_idx, time(nullptr));
+            GpuHashTable<KeyT, ValueT, HashFunc> hash_table(num_keys, num_buckets,
+                                                  device_idx);
 
             build_time += hash_table.Insert(h_key, h_value, num_keys);
 
@@ -202,7 +202,7 @@ void load_factor_bulk_experiment(uint32_t num_keys,
 * In this experiment, a single experiment is performed:
   Inputs: number of elements, expected chain length (# buckets)
 */
-template <typename KeyT, typename ValueT>
+template <typename KeyT, typename ValueT, typename HashFunc>
 void singleton_experiment(uint32_t num_keys,
                           uint32_t num_queries,
                           float expected_chain_length,
@@ -267,8 +267,7 @@ void singleton_experiment(uint32_t num_keys,
     double load_factor = 0.0;
     for (int iter = 0; iter < num_iter; iter++) {
         // building the hash table:
-        GpuHashTable<KeyT, ValueT> hash_table(num_keys, num_buckets, device_idx,
-                                              time(nullptr));
+        GpuHashTable<KeyT, ValueT, HashFunc> hash_table(num_keys, num_buckets, device_idx);
 
         build_time += hash_table.Insert(h_key, h_value, num_keys);
 
@@ -349,7 +348,7 @@ void singleton_experiment(uint32_t num_keys,
  * In this experiment, we assume that the expected chain length is fixed, number
  * of elements within the data structure changes.
  */
-template <typename KeyT, typename ValueT>
+template <typename KeyT, typename ValueT, typename HashFunc>
 void build_search_bulk_experiment(uint32_t num_keys_start,
                                   uint32_t num_keys_end,
                                   std::string filename,
@@ -431,8 +430,8 @@ void build_search_bulk_experiment(uint32_t num_keys_start,
 
         for (int iter = 0; iter < num_iter; iter++) {
             // building the hash table:
-            GpuHashTable<KeyT, ValueT> hash_table(num_keys, num_buckets,
-                                                  device_idx, time(nullptr));
+            GpuHashTable<KeyT, ValueT, HashFunc> hash_table(num_keys, num_buckets,
+                                                  device_idx);
 
             build_time += hash_table.Insert(h_key, h_value, num_keys);
 
@@ -535,7 +534,7 @@ void build_search_bulk_experiment(uint32_t num_keys_start,
     if (h_result) delete[] h_result;
 }
 
-template <typename KeyT, typename ValueT>
+template <typename KeyT, typename ValueT, typename HashFunc>
 void concurrent_batched_op_load_factor_experiment(uint32_t max_key_num,
                                                   uint32_t batch_size,
                                                   uint32_t num_batches,
@@ -596,8 +595,8 @@ void concurrent_batched_op_load_factor_experiment(uint32_t max_key_num,
         // building the hash table:
         for (int iter = 0; iter < num_iter; iter++) {
             // building the hash table:
-            GpuHashTable<KeyT, ValueT> hash_table(num_keys, num_buckets,
-                                                  device_idx, time(nullptr));
+            GpuHashTable<KeyT, ValueT, HashFunc> hash_table(num_keys, num_buckets,
+                                                  device_idx);
 
             BatchedDataGen key_gen(max_key_num, batch_size);
             key_gen.generate_random_keys(std::time(nullptr), /*num_msb = */ 2,

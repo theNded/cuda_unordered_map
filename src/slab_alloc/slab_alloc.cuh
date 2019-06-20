@@ -35,9 +35,9 @@ public:
     static constexpr uint32_t NUM_MEM_UNITS_PER_BLOCK_ = 1024;
     static constexpr uint32_t NUM_BITMAP_PER_MEM_BLOCK_ = 32;
     static constexpr uint32_t BITMAP_SIZE_ = 32;
-    static constexpr uint32_t WARP_SIZE_ = 32;
+    static constexpr uint32_t WARP_SIZE = 32;
     static constexpr uint32_t MEM_UNIT_SIZE_ =
-            MEM_UNIT_WARP_MULTIPLES_ * WARP_SIZE_;
+            MEM_UNIT_WARP_MULTIPLES_ * WARP_SIZE;
     static constexpr uint32_t SUPER_BLOCK_BIT_OFFSET_ALLOC_ = 27;
     static constexpr uint32_t MEM_BLOCK_BIT_OFFSET_ALLOC_ = 10;
     static constexpr uint32_t MEM_UNIT_BIT_OFFSET_ALLOC_ = 5;
@@ -295,7 +295,7 @@ public:
         return getSuperBlockIndex(address_ptr_index) * SUPER_BLOCK_SIZE_ +
                getMemBlockAddress(address_ptr_index) +
                getMemUnitIndex(address_ptr_index) * MEM_UNIT_WARP_MULTIPLES_ *
-                       WARP_SIZE_;
+                       WARP_SIZE;
     }
 
     __host__ __device__ __forceinline__ void print_address(

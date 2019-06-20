@@ -142,7 +142,7 @@ double GpuSlabHash<KeyT, ValueT, HashFunc>::computeLoadFactor(int flag = 0) {
 
     double load_factor =
             double(total_elements_stored * (sizeof(KeyT) + sizeof(ValueT))) /
-            double(total_mem_units * WARP_WIDTH_ * sizeof(uint32_t));
+            double(total_mem_units * WARP_WIDTH * sizeof(uint32_t));
 
     if (d_count_super_blocks) CHECK_CUDA(cudaFree(d_count_super_blocks));
     if (d_bucket_count) CHECK_CUDA(cudaFree(d_bucket_count));

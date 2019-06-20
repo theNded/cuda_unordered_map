@@ -188,7 +188,7 @@ __global__ void bucket_count_kernel(
                     REGULAR_NODE_KEY_MASK);
     uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
 
-    while (next != EMPTY_INDEX_POINTER) {
+    while (next != EMPTY_SLAB_POINTER) {
         src_unit_data = *slab_hash.getPointerFromSlab(next, lane_id);
         count += __popc(__ballot_sync(0xFFFFFFFF, src_unit_data != EMPTY_KEY) &
                         REGULAR_NODE_KEY_MASK);

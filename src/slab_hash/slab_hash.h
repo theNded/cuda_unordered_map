@@ -30,25 +30,26 @@ template <typename KeyT, typename ValueT, typename HashFunc>
 class GpuSlabHashContext {
 public:
     // fixed known parameters:
-    static constexpr uint32_t WARP_WIDTH_ = 32;
-
     GpuSlabHashContext() : num_buckets_(0), d_table_(nullptr) {
         // a single slab on a ConcurrentMap should be 128 bytes
-        assert(sizeof(ConcurrentSlab) == (WARP_WIDTH_ * sizeof(uint32_t)));
+        assert(sizeof(ConcurrentSlab) == (WARP_WIDTH * sizeof(uint32_t)));
     }
 
     static size_t getSlabUnitSize() { return sizeof(ConcurrentSlab); }
 
     static std::string getSlabHashTypeName() { return "ConcurrentMap"; }
 
-    __host__ void initParameters(const uint32_t num_buckets,
-                                 int8_t* d_table,
-                                 SlabListAllocatorContext* allocator_ctx,
-                                 MemoryHeapContext<KeyT> key_allocator_ctx) {
+    __host__ void initParameters(
+            const uint32_t num_buckets,
+            int8_t* d_table,
+            SlabListAllocatorContext* allocator_ctx,
+            MemoryHeapContext<KeyT> key_allocator_ctx,
+            MemoryHeapContext<ValueT> value_allocator_ctx) {
         num_buckets_ = num_buckets;
         d_table_ = reinterpret_cast<ConcurrentSlab*>(d_table);
         slab_list_allocator_ctx_ = *allocator_ctx;
         key_allocator_ctx_ = key_allocator_ctx;
+        value_allocator_ctx_ = value_allocator_ctx;
     }
 
     __device__ __host__ __forceinline__ SlabListAllocatorContext&
@@ -66,28 +67,34 @@ public:
         return hash_fn_(key) % num_buckets_;
     }
 
-    // threads in a warp cooperate with each other to insert key-value pairs
-    // into the slab hash
     __device__ __forceinline__ void insertPair(bool& to_be_inserted,
                                                const uint32_t& lane_id,
                                                const KeyT& myKey,
                                                const ValueT& myValue,
                                                const uint32_t bucket_id);
-
-    // threads in a warp cooeparte with each other to search for keys
-    // if found, it returns the corresponding value, else SEARCH_NOT_FOUND
-    // is returned
     __device__ __forceinline__ void searchKey(bool& to_be_searched,
                                               const uint32_t& lane_id,
                                               const KeyT& myKey,
                                               ValueT& myValue,
                                               const uint32_t bucket_id);
-
-    // all threads within a warp cooperate with each other to delete keys
     __device__ __forceinline__ void deleteKey(bool& to_be_deleted,
                                               const uint32_t& lane_id,
                                               const KeyT& myKey,
                                               const uint32_t bucket_id);
+
+    __device__ __forceinline__ int32_t laneFoundKeyInWarp(const KeyT& src_key,
+                                                          uint32_t lane_id,
+                                                          uint32_t unit_data) {
+        bool is_lane_found =
+                /* select key lanes */
+                ((1 << lane_id) & REGULAR_NODE_KEY_MASK)
+                /* validate key addrs */
+                && (unit_data != EMPTY_KEY)
+                /* find keys in memory heap */
+                && key_allocator_ctx_.value_at(unit_data) == src_key;
+
+        return __ffs(__ballot_sync(REGULAR_NODE_KEY_MASK, is_lane_found)) - 1;
+    }
 
     __device__ __forceinline__ uint32_t* getPointerFromSlab(
             const SlabAddressT& slab_address, const uint32_t lane_id) {
@@ -120,6 +127,7 @@ private:
     ConcurrentSlab* d_table_;
     SlabListAllocatorContext slab_list_allocator_ctx_;
     MemoryHeapContext<KeyT> key_allocator_ctx_;
+    MemoryHeapContext<ValueT> value_allocator_ctx_;
 };
 
 /*
@@ -130,8 +138,6 @@ class GpuSlabHash {
 private:
     // fixed known parameters:
     static constexpr uint32_t BLOCKSIZE_ = 128;
-    static constexpr uint32_t WARP_WIDTH_ = 32;
-    static constexpr uint32_t PRIME_DIVISOR_ = 4294967291u;
 
     uint32_t num_buckets_;
 
@@ -141,6 +147,7 @@ private:
 
     GpuSlabHashContext<KeyT, ValueT, HashFunc> gpu_context_;
     std::shared_ptr<MemoryHeap<KeyT>> key_allocator_;
+    std::shared_ptr<MemoryHeap<ValueT>> value_allocator_;
     std::shared_ptr<SlabListAllocator> slab_list_allocator_;
 
     uint32_t device_idx_;
@@ -148,11 +155,13 @@ private:
 public:
     GpuSlabHash(const uint32_t num_buckets,
                 const std::shared_ptr<SlabListAllocator>& slab_list_allocator,
-                const std::shared_ptr<MemoryHeap<KeyT>> &key_allocator,
+                const std::shared_ptr<MemoryHeap<KeyT>>& key_allocator,
+                const std::shared_ptr<MemoryHeap<KeyT>>& value_allocator,
                 uint32_t device_idx)
         : num_buckets_(num_buckets),
           slab_list_allocator_(slab_list_allocator),
           key_allocator_(key_allocator),
+          value_allocator_(value_allocator),
           device_idx_(device_idx),
           d_table_(nullptr),
           slab_unit_size_(0) {
@@ -172,9 +181,9 @@ public:
         CHECK_CUDA(cudaMalloc(&d_table_, slab_unit_size_ * num_buckets_));
         CHECK_CUDA(cudaMemset(d_table_, 0xFF, slab_unit_size_ * num_buckets_));
 
-        gpu_context_.initParameters(num_buckets_, d_table_,
-                                    slab_list_allocator_->getContextPtr(),
-                                    key_allocator_->gpu_context_);
+        gpu_context_.initParameters(
+                num_buckets_, d_table_, slab_list_allocator_->getContextPtr(),
+                key_allocator_->gpu_context_, value_allocator_->gpu_context_);
     }
 
     ~GpuSlabHash() {

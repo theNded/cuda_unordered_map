@@ -55,7 +55,7 @@ public:
             return false;
         }
 
-        while (cur_slab_address_ == SlabHashT::EMPTY_INDEX_POINTER) {
+        while (cur_slab_address_ == SlabHashT::EMPTY_SLAB_POINTER) {
             cur_bucket_++;
             if (cur_bucket_ == slab_hash_.getNumBuckets()) {
                 return false;
