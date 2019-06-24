@@ -89,7 +89,7 @@ public:
 template <typename T>
 class MemoryHeap {
 public:
-    int HeapCounter();
+    int heap_counter();
 
 public:
     int max_capacity_;

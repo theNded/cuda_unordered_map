@@ -42,11 +42,11 @@ __global__ void SearchKernel(
     bool to_search = false;
     if (tid < num_queries) {
         myQuery = d_queries[tid];
-        myBucket = slab_hash.computeBucket(myQuery);
+        myBucket = slab_hash.ComputeBucket(myQuery);
         to_search = true;
     }
 
-    slab_hash.searchKey(to_search, lane_id, myQuery, myResult, myBucket);
+    slab_hash.Search(to_search, lane_id, myQuery, myResult, myBucket);
 
     // writing back the results:
     if (tid < num_queries) {
@@ -76,57 +76,11 @@ __global__ void InsertKernel(
     if (tid < num_keys) {
         myKey = d_key[tid];
         myValue = d_value[tid];
-        myBucket = slab_hash.computeBucket(myKey);
+        myBucket = slab_hash.ComputeBucket(myKey);
         to_insert = true;
     }
 
-    slab_hash.insertPair(to_insert, lane_id, myKey, myValue, myBucket);
-}
-
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__global__ void MixedOperationKernel(
-        uint32_t* d_operations,
-        uint32_t* d_results,
-        uint32_t num_operations,
-        GpuSlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
-    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t lane_id = threadIdx.x & 0x1F;
-
-    if ((tid - lane_id) >= num_operations) return;
-
-    // initializing the memory allocator on each warp:
-    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
-
-    uint32_t myOperation = 0;
-    uint32_t myKey = 0;
-    uint32_t myValue = 0;
-    uint32_t myBucket = 0;
-
-    // if (tid < num_operations) {
-    //     myOperation = d_operations[tid];
-    //     myKey = myOperation & 0x3FFFFFFF;
-    //     myBucket = slab_hash.computeBucket(myKey);
-    //     myOperation = myOperation >> 30;
-    //     // todo: should be changed to a more general case
-    //     myValue = myKey;  // for the sake of this benchmark
-    // }
-
-    // bool to_insert = (myOperation == 1) ? true : false;
-    // bool to_delete = (myOperation == 2) ? true : false;
-    // bool to_search = (myOperation == 3) ? true : false;
-
-    // // first insertions:
-    // slab_hash.insertPair(to_insert, lane_id, myKey, myValue, myBucket);
-
-    // // second deletions:
-    // slab_hash.deleteKey(to_delete, lane_id, myKey, myBucket);
-
-    // // finally search queries:
-    // slab_hash.searchKey(to_search, lane_id, myKey, myValue, myBucket);
-
-    // if (myOperation == 3 && myValue != SEARCH_NOT_FOUND) {
-    //     d_results[tid] = myValue;
-    // }
+    slab_hash.InsertPair(to_insert, lane_id, myKey, myValue, myBucket);
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
@@ -150,12 +104,12 @@ __global__ void DeleteKernel(
 
     if (tid < num_keys) {
         myKey = d_key_deleted[tid];
-        myBucket = slab_hash.computeBucket(myKey);
+        myBucket = slab_hash.ComputeBucket(myKey);
         to_delete = true;
     }
 
     // delete the keys:
-    slab_hash.deleteKey(to_delete, lane_id, myKey, myBucket);
+    slab_hash.Delete(to_delete, lane_id, myKey, myBucket);
 }
 
 /*

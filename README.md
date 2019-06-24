@@ -48,11 +48,11 @@ __global__ void SearchKernel(
   bool to_search = false;
   if (tid < num_queries) {
     myQuery = d_queries[tid];
-    myBucket = slab_hash.computeBucket(myQuery);
+    myBucket = slab_hash.ComputeBucket(myQuery);
     to_search = true;
   }
 
-  slab_hash.searchKey(to_search, lane_id, myQuery, myResult, myBucket);
+  slab_hash.Search(to_search, lane_id, myQuery, myResult, myBucket);
 
   // writing back the results:
   if (tid < num_queries) {

@@ -72,7 +72,7 @@ public:
 
     ~SlabAllocLightContext() {}
 
-    void initParameters(uint32_t* d_super_block, uint32_t hash_coef) {
+    void Init(uint32_t* d_super_block, uint32_t hash_coef) {
         d_super_blocks_ = d_super_block;
         hash_coef_ = hash_coef;
     }
@@ -385,7 +385,7 @@ public:
         }
 
         // initializing the slab context:
-        slab_alloc_context_.initParameters(d_super_blocks_, hash_coef_);
+        slab_alloc_context_.Init(d_super_blocks_, hash_coef_);
     }
 
     // =========

@@ -16,8 +16,6 @@ void ResetMemoryHeapKernel(MemoryHeapContext<T> ctx) {
     if (i < ctx.max_capacity_) {
         ctx.value_at(i) = T(); /* This is not necessary. */
         ctx.internal_addr_at(i) = i;
-
-//        printf("[%d]: %d %d\n", i, ctx.value_at(i), ctx.internal_addr_at(i));
     }
 }
 
@@ -70,7 +68,7 @@ std::vector<T> MemoryHeap<T>::DownloadValue() {
 }
 
 template <typename T>
-int MemoryHeap<T>::HeapCounter() {
+int MemoryHeap<T>::heap_counter() {
     int heap_counter;
     CHECK_CUDA(cudaMemcpy(&heap_counter, gpu_context_.heap_counter_, sizeof(int),
                          cudaMemcpyDeviceToHost));

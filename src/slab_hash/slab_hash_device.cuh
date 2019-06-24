@@ -18,11 +18,113 @@
 
 #include "slab_hash.h"
 
+// fixed known parameters:
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::GpuSlabHashContext()
+    : num_buckets_(0), d_table_(nullptr) {
+    // a single slab on a ConcurrentMap should be 128 bytes
+    assert(sizeof(ConcurrentSlab) == (WARP_WIDTH * sizeof(uint32_t)));
+}
+
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+size_t GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::SlabUnitSize() {
+    return sizeof(ConcurrentSlab);
+}
+
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__host__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::Init(
+        const uint32_t num_buckets,
+        int8_t* d_table,
+        SlabListAllocatorContext* allocator_ctx,
+        MemoryHeapContext<KeyTD> key_allocator_ctx,
+        MemoryHeapContext<ValueT> value_allocator_ctx) {
+    num_buckets_ = num_buckets;
+    d_table_ = reinterpret_cast<ConcurrentSlab*>(d_table);
+    slab_list_allocator_ctx_ = *allocator_ctx;
+    key_allocator_ctx_ = key_allocator_ctx;
+    value_allocator_ctx_ = value_allocator_ctx;
+}
+
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ __host__ __forceinline__ uint32_t
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::ComputeBucket(
+        const KeyTD& key) const {
+    return hash_fn_(key) % num_buckets_;
+}
+
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ int32_t
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::laneFoundKeyInWarp(
+        const KeyTD& src_key, uint32_t lane_id, uint32_t unit_data) {
+    bool is_lane_found =
+            /* select key lanes */
+            ((1 << lane_id) & REGULAR_NODE_KEY_MASK)
+            /* validate key addrs */
+            && (unit_data != EMPTY_KEY)
+            /* find keys in memory heap */
+            && key_allocator_ctx_.value_at(unit_data) == src_key;
+
+    return __ffs(__ballot_sync(REGULAR_NODE_KEY_MASK, is_lane_found)) - 1;
+}
+
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ __forceinline__ int32_t
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::laneEmptyKeyInWarp(
+        const uint32_t unit_data) {
+    uint32_t isEmpty = __ballot_sync(0xFFFFFFFF, (unit_data == EMPTY_KEY));
+    return __ffs(isEmpty & REGULAR_NODE_KEY_MASK) - 1;
+}
+
+
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ __host__ __forceinline__ SlabListAllocatorContext&
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::getAllocatorContext() {
+    return slab_list_allocator_ctx_;
+}
+
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ __host__ __forceinline__ ConcurrentSlab*
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::getDeviceTablePointer() {
+    return d_table_;
+}
+
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ __forceinline__ uint32_t*
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::getPointerFromSlab(
+        const SlabAddressT& slab_address, const uint32_t lane_id) {
+    return slab_list_allocator_ctx_.getPointerFromSlab(slab_address, lane_id);
+}
+
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ __forceinline__ uint32_t*
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::getPointerFromBucket(
+        const uint32_t bucket_id, const uint32_t lane_id) {
+    return reinterpret_cast<uint32_t*>(d_table_) + bucket_id * BASE_UNIT_SIZE +
+           lane_id;
+}
+
+// this function should be operated in a warp-wide fashion
+// TODO: add required asserts to make sure this is true in tests/debugs
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ __forceinline__ SlabAllocAddressT
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::AllocateSlab(
+        const uint32_t& lane_id) {
+    return slab_list_allocator_ctx_.warpAllocate(lane_id);
+}
+
+// a thread-wide function to free the slab that was just allocated
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ __forceinline__ void
+GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::FreeSlab(
+        const SlabAllocAddressT slab_ptr) {
+    slab_list_allocator_ctx_.freeUntouched(slab_ptr);
+}
+
 //================================================
 // Individual Search Unit:
 //================================================
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::searchKey(
+__device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::Search(
         bool& to_search,
         const uint32_t& lane_id,
         const KeyTD& myKey,
@@ -97,12 +199,12 @@ __device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::searchKey(
  * each thread inserts a key-value pair into the hash table
  * it is assumed all threads within a warp are present and collaborating with
  * each other with a warp-cooperative work sharing (WCWS) strategy.
- * insertPair: ABORT if found
+ * InsertPair: ABORT if found
  * replacePair: REPLACE if found
  * WE DO NOT ALLOW DUPLICATE KEYS
  */
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::insertPair(
+__device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::InsertPair(
         bool& to_be_inserted,
         const uint32_t& lane_id,
         const KeyTD& myKey,
@@ -204,7 +306,7 @@ __device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::insertPair(
 
             /** Branch 3.2: next slab empty, try to allocate one **/
             else {
-                uint32_t new_node_ptr = allocateSlab(lane_id);
+                uint32_t new_node_ptr = AllocateSlab(lane_id);
 
                 if (lane_id == NEXT_SLAB_POINTER_LANE) {
                     const uint32_t* p =
@@ -222,7 +324,7 @@ __device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::insertPair(
                     /** Branch 3.2.1: other thread allocated, RESTART lane
                      *  In the consequent attempt, goto Branch 2' **/
                     if (old_next_slab_ptr != EMPTY_SLAB_POINTER) {
-                        freeSlab(new_node_ptr);
+                        FreeSlab(new_node_ptr);
                     }
                     /** Branch 3.2.2: this thread allocated, RESTART lane,
                      * 'goto Branch 2' **/
@@ -235,7 +337,7 @@ __device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::insertPair(
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::deleteKey(
+__device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::Delete(
         bool& to_be_deleted,
         const uint32_t& lane_id,
         const KeyTD& myKey,
