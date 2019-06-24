@@ -31,7 +31,7 @@
  * In this experiment, we compute the bulk build time versus different load
  * factors.
  */
-template <typename KeyT, typename ValueT, typename HashFunc>
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 void load_factor_bulk_experiment(uint32_t num_keys,
                                  uint32_t num_queries,
                                  std::string filename,
@@ -60,10 +60,11 @@ void load_factor_bulk_experiment(uint32_t num_keys,
             doc.GetAllocator());
     rapidjson::Value object_array(rapidjson::kArrayType);
 
-    uint32_t* h_key = new uint32_t[num_keys + num_queries];
-    uint32_t* h_value = new uint32_t[num_keys + num_queries];
-    uint32_t* h_query = new uint32_t[num_queries];
-    uint32_t* h_result = new uint32_t[num_queries];
+    using KeyTD = Coordinate<KeyT, D>;
+    KeyTD* h_key = new KeyTD[num_keys + num_queries];
+    ValueT* h_value = new ValueT[num_keys + num_queries];
+    KeyTD* h_query = new KeyTD[num_queries];
+    ValueT* h_result = new ValueT[num_queries];
 
     const uint32_t num_elements_per_unit = 15;
     // === generating random key-values
@@ -202,7 +203,7 @@ void load_factor_bulk_experiment(uint32_t num_keys,
 * In this experiment, a single experiment is performed:
   Inputs: number of elements, expected chain length (# buckets)
 */
-template <typename KeyT, typename ValueT, typename HashFunc>
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 void singleton_experiment(uint32_t num_keys,
                           uint32_t num_queries,
                           float expected_chain_length,
@@ -348,7 +349,7 @@ void singleton_experiment(uint32_t num_keys,
  * In this experiment, we assume that the expected chain length is fixed, number
  * of elements within the data structure changes.
  */
-template <typename KeyT, typename ValueT, typename HashFunc>
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 void build_search_bulk_experiment(uint32_t num_keys_start,
                                   uint32_t num_keys_end,
                                   std::string filename,
@@ -534,7 +535,7 @@ void build_search_bulk_experiment(uint32_t num_keys_start,
     if (h_result) delete[] h_result;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 void concurrent_batched_op_load_factor_experiment(uint32_t max_key_num,
                                                   uint32_t batch_size,
                                                   uint32_t num_batches,

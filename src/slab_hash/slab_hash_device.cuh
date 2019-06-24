@@ -21,11 +21,11 @@
 //================================================
 // Individual Search Unit:
 //================================================
-template <typename KeyT, typename ValueT, typename HashFunc>
-__device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::searchKey(
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::searchKey(
         bool& to_search,
         const uint32_t& lane_id,
-        const KeyT& myKey,
+        const KeyTD& myKey,
         ValueT& myValue,
         const uint32_t bucket_id) {
     uint32_t work_queue = 0;
@@ -40,9 +40,14 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::searchKey(
         uint32_t src_lane = __ffs(work_queue) - 1;
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANE_MASK, bucket_id, src_lane, WARP_WIDTH);
+
         // TODO generalize it to multiple ints
-        uint32_t src_key =
-                __shfl_sync(ACTIVE_LANE_MASK, myKey, src_lane, WARP_WIDTH);
+        KeyTD src_key;
+#pragma unroll 1
+        for (size_t i = 0; i < D; ++i) {
+            src_key[i] = __shfl_sync(ACTIVE_LANE_MASK, myKey[i], src_lane,
+                                     WARP_WIDTH);
+        }
 
         /* Each lane in the warp reads a uint in the slab in parallel */
         const uint32_t unit_data =
@@ -96,11 +101,11 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::searchKey(
  * replacePair: REPLACE if found
  * WE DO NOT ALLOW DUPLICATE KEYS
  */
-template <typename KeyT, typename ValueT, typename HashFunc>
-__device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::insertPair(
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::insertPair(
         bool& to_be_inserted,
         const uint32_t& lane_id,
-        const KeyT& myKey,
+        const KeyTD& myKey,
         const ValueT& myValue,
         const uint32_t bucket_id) {
     uint32_t work_queue = 0;
@@ -127,8 +132,12 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::insertPair(
         uint32_t src_lane = __ffs(work_queue) - 1;
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANE_MASK, bucket_id, src_lane, WARP_WIDTH);
-        uint32_t src_key =
-                __shfl_sync(ACTIVE_LANE_MASK, myKey, src_lane, WARP_WIDTH);
+        KeyTD src_key;
+#pragma unroll 1
+        for (size_t i = 0; i < D; ++i) {
+            src_key[i] = __shfl_sync(ACTIVE_LANE_MASK, myKey[i], src_lane,
+                                     WARP_WIDTH);
+        }
 
         /* Each lane in the warp reads a uint in the slab */
         uint32_t unit_data =
@@ -137,7 +146,7 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::insertPair(
                         : *(getPointerFromSlab(curr_slab_ptr, lane_id));
 
         int32_t lane_found = laneFoundKeyInWarp(src_key, lane_id, unit_data);
-        int32_t lane_empty = SlabHash_NS::findEmptyPerWarp<KeyT>(unit_data);
+        int32_t lane_empty = SlabHash_NS::findEmptyPerWarp(unit_data);
 
         /** Branch 1: key already existing, ABORT **/
         if (lane_found >= 0) {
@@ -225,11 +234,11 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::insertPair(
     }
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-__device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::deleteKey(
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+__device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::deleteKey(
         bool& to_be_deleted,
         const uint32_t& lane_id,
-        const KeyT& myKey,
+        const KeyTD& myKey,
         const uint32_t bucket_id) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = 0;
@@ -237,14 +246,20 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::deleteKey(
 
     /** > Loop when we have active lanes **/
     while ((work_queue = __ballot_sync(ACTIVE_LANE_MASK, to_be_deleted))) {
-        /** 0. Restart from linked list head if last insertion is finished **/
+        /** 0. Restart from linked list head if last insertion is finished
+         * **/
         curr_slab_ptr = (prev_work_queue != work_queue) ? HEAD_SLAB_POINTER
                                                         : curr_slab_ptr;
         uint32_t src_lane = __ffs(work_queue) - 1;
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANE_MASK, bucket_id, src_lane, WARP_WIDTH);
-        uint32_t src_key =
-                __shfl_sync(ACTIVE_LANE_MASK, myKey, src_lane, WARP_WIDTH);
+
+        KeyTD src_key;
+#pragma unroll 1
+        for (size_t i = 0; i < D; ++i) {
+            src_key[i] = __shfl_sync(ACTIVE_LANE_MASK, myKey[i], src_lane,
+                                     WARP_WIDTH);
+        }
 
         const uint32_t unit_data =
                 (curr_slab_ptr == HEAD_SLAB_POINTER)
@@ -276,7 +291,8 @@ __device__ void GpuSlabHashContext<KeyT, ValueT, HashFunc>::deleteKey(
                     key_allocator_ctx_.Free(src_addr);
                     value_allocator_ctx_.Free(src_value_addr);
                 }
-                /** Branch 1.2: other thread did the job, avoid double free **/
+                /** Branch 1.2: other thread did the job, avoid double free
+                 * **/
                 to_be_deleted = false;
             }
         } else {  // no matching slot found:

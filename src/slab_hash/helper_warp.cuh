@@ -39,7 +39,6 @@ findKeyPerWarp(const uint32_t& src_key, const uint32_t read_data_chunk) {
 }
 
 // search for an empty spot
-template <typename KeyT>
 __device__ __forceinline__ int32_t
 findEmptyPerWarp(const uint32_t read_data_chunk) {
     uint32_t isEmpty =

@@ -19,6 +19,30 @@
 #include "memory_heap/MemoryHeapHost.cuh"
 #include "slab_hash/instantiate.cuh"
 
+struct HasherUint321D {
+    __device__ __host__ uint64_t
+    operator()(const Coordinate<uint32_t, 1>& key) const {
+        static const uint32_t hash_x = 1791095845u;
+        static const uint32_t hash_y = 4282876139u;
+        static const uint32_t prime_devisor = 4294967291u;
+
+        return ((hash_x ^ key[0]) + hash_y) % prime_devisor;
+    }
+};
+
+template <size_t D>
+struct CoordinateHashFunc {
+    __device__ __host__ uint64_t
+    operator()(const Coordinate<uint32_t, D>& key) const {
+        uint64_t hash = UINT64_C(14695981039346656037);
+        for (int i = 0; i < D; ++i) {
+            hash ^= key[i];
+            hash *= UINT64_C(1099511628211);
+        }
+        return hash;
+    }
+};
+
 struct HasherUint32 {
     __device__ __host__ uint32_t operator()(const uint32_t& key) const {
         static const uint32_t hash_x = 1791095845u;
@@ -30,7 +54,8 @@ struct HasherUint32 {
 };
 
 /* Lightweight wrapper to handle host input */
-template <typename KeyT, typename ValueT, typename HashFunc>
+/* KeyT a elementary types: int, long, etc. */
+template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 class GpuHashTable {
 private:
     uint32_t max_keys_;
@@ -43,14 +68,15 @@ public:
     uint32_t cuda_device_idx_;
 
     /* Allocator for the @slab linked lists */
-    std::shared_ptr<MemoryHeap<KeyT>> key_allocator_;
+    typedef Coordinate<KeyT, D> KeyTD;
+    std::shared_ptr<MemoryHeap<KeyTD>> key_allocator_;
     std::shared_ptr<MemoryHeap<ValueT>> value_allocator_;
     std::shared_ptr<SlabListAllocator> slab_list_allocator_;
-    std::shared_ptr<GpuSlabHash<KeyT, ValueT, HashFunc>> slab_hash_;
+    std::shared_ptr<GpuSlabHash<KeyT, D, ValueT, HashFunc>> slab_hash_;
 
-    KeyT* d_key_;
+    KeyTD* d_key_;
     ValueT* d_value_;
-    KeyT* d_query_;
+    KeyTD* d_query_;
     ValueT* d_result_;
 
     GpuHashTable(uint32_t max_keys,
@@ -68,17 +94,17 @@ public:
         CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
 
         // allocating key, value arrays:
-        CHECK_CUDA(cudaMalloc((void**)&d_key_, sizeof(KeyT) * max_keys_));
+        CHECK_CUDA(cudaMalloc((void**)&d_key_, sizeof(KeyTD) * max_keys_));
         CHECK_CUDA(cudaMalloc((void**)&d_value_, sizeof(ValueT) * max_keys_));
-        CHECK_CUDA(cudaMalloc((void**)&d_query_, sizeof(KeyT) * max_keys_));
+        CHECK_CUDA(cudaMalloc((void**)&d_query_, sizeof(KeyTD) * max_keys_));
         CHECK_CUDA(cudaMalloc((void**)&d_result_, sizeof(ValueT) * max_keys_));
 
         // allocate an initialize the allocator:
         slab_list_allocator_ = std::make_shared<SlabListAllocator>();
-        key_allocator_ = std::make_shared<MemoryHeap<KeyT>>(max_keys_);
+        key_allocator_ = std::make_shared<MemoryHeap<KeyTD>>(max_keys_);
         value_allocator_ = std::make_shared<MemoryHeap<ValueT>>(max_keys_);
 
-        slab_hash_ = std::make_shared<GpuSlabHash<KeyT, ValueT, HashFunc>>(
+        slab_hash_ = std::make_shared<GpuSlabHash<KeyT, D, ValueT, HashFunc>>(
                 num_buckets_, slab_list_allocator_, key_allocator_,
                 value_allocator_, cuda_device_idx_);
     }
@@ -93,10 +119,10 @@ public:
         CHECK_CUDA(cudaFree(d_result_));
     }
 
-    float Insert(KeyT* h_key, ValueT* h_value, uint32_t num_keys) {
+    float Insert(KeyTD* h_key, ValueT* h_value, uint32_t num_keys) {
         // moving key-values to the device:
         CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-        CHECK_CUDA(cudaMemcpy(d_key_, h_key, sizeof(KeyT) * num_keys,
+        CHECK_CUDA(cudaMemcpy(d_key_, h_key, sizeof(KeyTD) * num_keys,
                               cudaMemcpyHostToDevice));
         CHECK_CUDA(cudaMemcpy(d_value_, h_value, sizeof(ValueT) * num_keys,
                               cudaMemcpyHostToDevice));
@@ -120,9 +146,9 @@ public:
         return temp_time;
     }
 
-    float Search(KeyT* h_query, ValueT* h_result, uint32_t num_queries) {
+    float Search(KeyTD* h_query, ValueT* h_result, uint32_t num_queries) {
         CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-        CHECK_CUDA(cudaMemcpy(d_query_, h_query, sizeof(KeyT) * num_queries,
+        CHECK_CUDA(cudaMemcpy(d_query_, h_query, sizeof(KeyTD) * num_queries,
                               cudaMemcpyHostToDevice));
         CHECK_CUDA(cudaMemset(d_result_, 0xFF, sizeof(ValueT) * num_queries));
 
@@ -148,9 +174,9 @@ public:
         return temp_time;
     }
 
-    float Delete(KeyT* h_key, uint32_t num_keys) {
+    float Delete(KeyTD* h_key, uint32_t num_keys) {
         CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-        CHECK_CUDA(cudaMemcpy(d_key_, h_key, sizeof(KeyT) * num_keys,
+        CHECK_CUDA(cudaMemcpy(d_key_, h_key, sizeof(KeyTD) * num_keys,
                               cudaMemcpyHostToDevice));
 
         float temp_time = 0.0f;

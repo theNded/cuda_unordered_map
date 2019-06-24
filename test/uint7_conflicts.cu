@@ -42,34 +42,39 @@ int main(int argc, char** argv) {
     /******** Hash table meta data ********/
     uint32_t num_elems = 1 << 20;
     float expected_chain = 0.8f;
-    uint32_t num_elems_per_bucket = 5;
+    uint32_t num_elems_per_bucket = 15;
     uint32_t expected_elems_per_bucket = expected_chain * num_elems_per_bucket;
     uint32_t num_buckets = (num_elems + expected_elems_per_bucket - 1) /
                            expected_elems_per_bucket;
 
     /******** Insertion data ********/
     using KeyT = uint32_t;
+    constexpr size_t D = 7;
     using ValueT = uint32_t;
-    using HashFunc = HasherUint32;
-    const auto f = [](const KeyT& key) { return key * 10; };
+    using HashFunc = CoordinateHashFunc<D>;
+    using KeyTD = Coordinate<KeyT, D>;
 
     const int num_insertions = num_elems / 2;
-    std::vector<KeyT> h_key(num_insertions);
+    std::vector<KeyTD> h_key(num_insertions);
     std::vector<ValueT> h_value(num_insertions);
+    std::vector<ValueT> h_result_gt(num_insertions);
     const int64_t seed = 1;
     std::mt19937 rng(seed);
-    std::vector<uint32_t> index(num_insertions);
+    std::vector<uint32_t> index(num_insertions * D);
     std::iota(index.begin(), index.end(), 0);
     std::shuffle(index.begin(), index.end(), rng);
-    for (int32_t i = 0; i < index.size(); i++) {
-        h_key[i] = index[i];
-        h_value[i] = f(h_key[i]);
+
+    for (int32_t i = 0; i < num_insertions; ++i) {
+      for (int d = 0; d < D; ++d) {
+        h_key[i][d] = index[i * D + d];
+      }
+      h_result_gt[i] = h_value[i] = i;
     }
 
     /******* Instantiate hash table ********/
     printf("num elems: %d, num buckets: %d -- num insertions: %d\n", num_elems,
            num_buckets, num_insertions);
-    GpuHashTable<KeyT, ValueT, HashFunc> hash_table(num_elems, num_buckets, 0);
+    GpuHashTable<KeyT, D, ValueT, HashFunc> hash_table(num_elems, num_buckets, 0);
 
     /****** Insert and query ********/
     float build_time =
@@ -85,10 +90,11 @@ int main(int argc, char** argv) {
 
     bool search_success = true;
     for (int i = 0; i < num_insertions; i++) {
-        if (f(h_key[i]) != h_result[i]) {
+        if (h_result_gt[i] != h_result[i]) {
             printf("### Result at index %d: [%d] -> %d, expected: %d\n", i,
-                   h_key[i], h_result[i], f(h_key[i]));
+                   h_key[i][0], h_result[i], h_value[i]);
             search_success = false;
+            break;
         }
     }
     if (search_success) {
@@ -119,10 +125,11 @@ int main(int argc, char** argv) {
     search_success = true;
     for (int i = 0; i < num_insertions; i++) {
         /* We expect nothing is changed */
-        if (f(h_key[i]) != h_result[i]) {
+        if (h_result_gt[i] != h_result[i]) {
             printf("### Result at index %d: [%d] -> %d, expected: %d\n", i,
-                   h_key[i], h_result[i], f(h_key[i]));
-            search_success = false;
+                   h_key[i][0], h_result[i], h_value[i]);
+            search_success = false; 
+
         }
     }
     if (search_success) {

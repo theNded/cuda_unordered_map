@@ -152,24 +152,26 @@ int main(int argc, char** argv) {
     printf("Experiment mode = %d\n", mode);
 
     using KeyT = uint32_t;
+    constexpr size_t D = 7;
     using ValueT = uint32_t;
-    using HashFunc = HasherUint32;
+    using HashFunc = CoordinateHashFunc<D>;
+
 
     // running the actual experiment
     switch (mode) {
         case 0:  // singleton experiment
-            singleton_experiment<KeyT, ValueT, HashFunc >(
+          singleton_experiment<KeyT, D, ValueT, HashFunc >(
                     num_keys, num_queries, expected_chain, filename, device_idx,
                     existing_ratio, num_iter,
                     /*run_cudpp = */ false, verbose);
             break;
         case 1:  // bulk build, num elements fixed, load factor changing
-            load_factor_bulk_experiment<KeyT, ValueT, HashFunc >(
+          load_factor_bulk_experiment<KeyT, D, ValueT, HashFunc >(
                     num_keys, num_queries, filename, device_idx, existing_ratio,
                     num_iter, false, lf_bulk_num_sample, lf_bulk_step);
             break;
         case 3:  // concurrent experiment:
-            concurrent_batched_op_load_factor_experiment<KeyT, ValueT, HashFunc >(
+          concurrent_batched_op_load_factor_experiment<KeyT, D, ValueT, HashFunc >(
                     /*max_num_keys = */ 1 << n_end,
                     /*batch_size = */ 1 << n_start, num_batch, init_batch,
                     insert_ratio, delete_ratio, search_exist_ratio, filename,
