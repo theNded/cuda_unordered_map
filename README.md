@@ -27,7 +27,7 @@ There is another class, named [https://github.com/owensgroup/SlabHash/blob/maste
 
 ```
 template <typename KeyT, typename ValueT>
-__global__ void search_table(
+__global__ void SearchKernel(
     KeyT* d_queries,
     ValueT* d_results,
     uint32_t num_queries,

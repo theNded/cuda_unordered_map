@@ -20,7 +20,7 @@
 
 //=== Individual search kernel:
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__global__ void search_table(
+__global__ void SearchKernel(
         Coordinate<KeyT, D>* d_queries,
         ValueT* d_results,
         uint32_t num_queries,
@@ -55,7 +55,7 @@ __global__ void search_table(
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__global__ void build_table_kernel(
+__global__ void InsertKernel(
         Coordinate<KeyT, D>* d_key,
         ValueT* d_value,
         uint32_t num_keys,
@@ -84,7 +84,7 @@ __global__ void build_table_kernel(
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__global__ void MixedOperation(
+__global__ void MixedOperationKernel(
         uint32_t* d_operations,
         uint32_t* d_results,
         uint32_t num_operations,
@@ -130,7 +130,7 @@ __global__ void MixedOperation(
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__global__ void delete_table_keys(
+__global__ void DeleteKernel(
         Coordinate<KeyT, D>* d_key_deleted,
         uint32_t num_keys,
         GpuSlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {

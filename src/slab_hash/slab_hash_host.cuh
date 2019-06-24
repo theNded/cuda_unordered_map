@@ -19,41 +19,41 @@
 #include "slab_hash.h"
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void GpuSlabHash<KeyT, D, ValueT, HashFunc>::buildBulk(KeyTD* d_key,
+void GpuSlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* d_key,
                                                        ValueT* d_value,
                                                        uint32_t num_keys) {
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     // calling the kernel for bulk build:
     CHECK_CUDA(cudaSetDevice(device_idx_));
-    build_table_kernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
+    InsertKernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
             d_key, d_value, num_keys, gpu_context_);
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void GpuSlabHash<KeyT, D, ValueT, HashFunc>::searchIndividual(
+void GpuSlabHash<KeyT, D, ValueT, HashFunc>::Search(
         KeyTD* d_query, ValueT* d_result, uint32_t num_queries) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_queries + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    search_table<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
+    SearchKernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
             d_query, d_result, num_queries, gpu_context_);
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void GpuSlabHash<KeyT, D, ValueT, HashFunc>::deleteIndividual(
+void GpuSlabHash<KeyT, D, ValueT, HashFunc>::Delete(
         KeyTD* d_key, uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    delete_table_keys<KeyT, D, ValueT, HashFunc>
+    DeleteKernel<KeyT, D, ValueT, HashFunc>
             <<<num_blocks, BLOCKSIZE_>>>(d_key, num_keys, gpu_context_);
 }
 
 // perform a batch of (a mixture of) updates/searches
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void GpuSlabHash<KeyT, D, ValueT, HashFunc>::batchedOperation(
+void GpuSlabHash<KeyT, D, ValueT, HashFunc>::MixedOperation(
         KeyTD* d_key, ValueT* d_result, uint32_t num_ops) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_ops + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    MixedOperation<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
+    MixedOperationKernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
             d_key, d_result, num_ops, gpu_context_);
 }
 

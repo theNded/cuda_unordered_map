@@ -103,7 +103,7 @@ public:
 
         cudaEventRecord(start, 0);
 
-        slab_hash_->buildBulk(d_key_, d_value_, num_keys);
+        slab_hash_->Insert(d_key_, d_value_, num_keys);
 
         cudaEventRecord(stop, 0);
         cudaEventSynchronize(stop);
@@ -127,7 +127,7 @@ public:
         cudaEventCreate(&stop);
         cudaEventRecord(start, 0);
 
-        slab_hash_->searchIndividual(d_query_, d_result_, num_queries);
+        slab_hash_->Search(d_query_, d_result_, num_queries);
 
         cudaEventRecord(stop, 0);
         cudaEventSynchronize(stop);
@@ -154,7 +154,7 @@ public:
         cudaEventCreate(&stop);
         cudaEventRecord(start, 0);
 
-        slab_hash_->deleteIndividual(d_key_, num_keys);
+        slab_hash_->Delete(d_key_, num_keys);
 
         cudaEventRecord(stop, 0);
         cudaEventSynchronize(stop);
@@ -183,7 +183,7 @@ public:
         cudaEventCreate(&stop);
 
         cudaEventRecord(start, 0);
-        slab_hash_->batchedOperation(d_key_ + batch_id * batch_size, d_result_,
+        slab_hash_->MixedOperation(d_key_ + batch_id * batch_size, d_result_,
                                      batch_size);
         cudaEventRecord(stop, 0);
         cudaEventSynchronize(stop);

@@ -22,11 +22,10 @@
 #include <typeinfo>
 
 // global declarations
-#include "config.cuh"
+#include "config.h"
 
 // global helper methods:
 #include "helper/helper_cuda.h"
-#include "helper_warp.cuh"
 
 #include "slab_hash.h"
 #include "slab_hash_kernel.cuh"

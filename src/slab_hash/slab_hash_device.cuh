@@ -146,7 +146,7 @@ __device__ void GpuSlabHashContext<KeyT, D, ValueT, HashFunc>::insertPair(
                         : *(getPointerFromSlab(curr_slab_ptr, lane_id));
 
         int32_t lane_found = laneFoundKeyInWarp(src_key, lane_id, unit_data);
-        int32_t lane_empty = SlabHash_NS::findEmptyPerWarp(unit_data);
+        int32_t lane_empty = laneEmptyKeyInWarp(unit_data);
 
         /** Branch 1: key already existing, ABORT **/
         if (lane_found >= 0) {

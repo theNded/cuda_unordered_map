@@ -134,6 +134,13 @@ public:
         return __ffs(__ballot_sync(REGULAR_NODE_KEY_MASK, is_lane_found)) - 1;
     }
 
+    __device__ __forceinline__ int32_t
+    laneEmptyKeyInWarp(const uint32_t unit_data) {
+        uint32_t isEmpty =
+                __ballot_sync(0xFFFFFFFF, (unit_data == EMPTY_KEY));
+        return __ffs(isEmpty & REGULAR_NODE_KEY_MASK) - 1;
+    }
+
     __device__ __forceinline__ uint32_t* getPointerFromSlab(
             const SlabAddressT& slab_address, const uint32_t lane_id) {
         return slab_list_allocator_ctx_.getPointerFromSlab(slab_address,
@@ -236,11 +243,8 @@ public:
     std::string to_string();
     double computeLoadFactor(int flag);
 
-    void buildBulk(KeyTD* d_key, ValueT* d_value, uint32_t num_keys);
-    void searchIndividual(KeyTD* d_query,
-                          ValueT* d_result,
-                          uint32_t num_queries);
-    void searchBulk(KeyTD* d_query, ValueT* d_result, uint32_t num_queries);
-    void deleteIndividual(KeyTD* d_key, uint32_t num_keys);
-    void batchedOperation(KeyTD* d_key, ValueT* d_result, uint32_t num_ops);
+    void Insert(KeyTD* d_key, ValueT* d_value, uint32_t num_keys);
+    void Search(KeyTD* d_query, ValueT* d_result, uint32_t num_queries);
+    void Delete(KeyTD* d_key, uint32_t num_keys);
+    void MixedOperation(KeyTD* d_key, ValueT* d_result, uint32_t num_ops);
 };
