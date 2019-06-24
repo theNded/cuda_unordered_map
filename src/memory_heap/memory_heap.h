@@ -10,21 +10,8 @@
 /**
  * Memory allocation and free are expensive on GPU.
  * (And are easy to overflow, I need to check the the reason.)
- * We intend to pre-allocate memory, and manually manage (alloc, free) it.
- * Currently instantiated usages include:
- * - LinkedListNode, in LinkedList<T>
- * - Value, in HashTable<T>
- *
- * Specifically,
- * - LinkedListNode<HashEntry>* node is on MemoryHeap<Node>,
- * - node->data.value_ptr is on MemoryHeap<Value>,
- * it could be confusing, as there are int pointers pointed to int pointers.
  *
  * Basically, we maintain one memory heap per data type.
- * A more general way it is to build an entire memory manager,
- * but that can be too complicated.
- * (And even more complicated when you have have multiple threads!)
- * @TODO: If I have time I will modify CSAPP Malloc Lab's code here.
  */
 
 #include <assert.h>
@@ -46,7 +33,7 @@ public:
     __device__ inline int *heap_counter() { return heap_counter_; }
 
     /**
-     * The @value array is FIXED.
+     * The @value array's size is FIXED.
      * The @heap array stores the addresses of the values.
      * Only the unallocated part is maintained.
      * (ONLY care about the heap above the heap counter. Below is meaningless.)

@@ -120,19 +120,6 @@ double GpuSlabHash<KeyT, D, ValueT, HashFunc>::computeLoadFactor(int flag = 0) {
                           sizeof(uint32_t) * num_super_blocks,
                           cudaMemcpyDeviceToHost));
 
-    // printing stats per super block:
-    if (false) {
-        int total_allocated = 0;
-        for (int i = 0; i < num_super_blocks; i++) {
-            printf("(%d: %d -- %f) \t", i, h_count_super_blocks[i],
-                   double(h_count_super_blocks[i]) /
-                           double(1024 * num_mem_units) / 32);
-            if (i % 4 == 3) printf("\n");
-            total_allocated += h_count_super_blocks[i];
-        }
-        printf("\n");
-        printf("Total number of allocated memory units: %d\n", total_allocated);
-    }
     // computing load factor
     int total_mem_units = num_buckets_;
     for (int i = 0; i < num_super_blocks; i++)

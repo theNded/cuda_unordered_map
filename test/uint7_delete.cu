@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
     using KeyT = uint32_t;
     constexpr size_t D = 7;
     using ValueT = uint32_t;
-    using HashFunc = CoordinateHashFunc<D>;
+    using HashFunc = CoordinateHashFunc<KeyT, D>;
     using KeyTD = Coordinate<KeyT, D>;
 
     std::vector<KeyTD> h_key(num_elements);

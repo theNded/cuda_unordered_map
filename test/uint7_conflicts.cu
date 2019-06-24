@@ -48,10 +48,10 @@ int main(int argc, char** argv) {
                            expected_elems_per_bucket;
 
     /******** Insertion data ********/
-    using KeyT = uint32_t;
+    using KeyT = uint64_t;
     constexpr size_t D = 7;
     using ValueT = uint32_t;
-    using HashFunc = CoordinateHashFunc<D>;
+    using HashFunc = CoordinateHashFunc<KeyT, D>;
     using KeyTD = Coordinate<KeyT, D>;
 
     const int num_insertions = num_elems / 2;

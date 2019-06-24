@@ -19,11 +19,14 @@
 #include <cassert>
 #include <memory>
 
-#include "../memory_heap/MemoryHeapHost.cuh"
+#include "../memory_heap/memory_heap_host.cuh"
 
 template <typename T, size_t D>
 struct Coordinate {
+private:
     T data_[D];
+
+public:
     __device__ __host__ T& operator[](size_t i) { return data_[i]; }
     __device__ __host__ const T& operator[](size_t i) const { return data_[i]; }
 
@@ -34,6 +37,23 @@ struct Coordinate {
             equal &= (data_[i] == rhs[i]);
         }
         return equal;
+    }
+};
+
+template <typename T, size_t D>
+struct CoordinateHashFunc {
+    __device__ __host__ uint64_t operator()(const Coordinate<T, D>& key) const {
+        uint64_t hash = UINT64_C(14695981039346656037);
+
+        /** We only support 4-byte and 8-byte types **/
+        using input_t = typename std::conditional<sizeof(T) == sizeof(uint32_t),
+                                                  uint32_t, uint64_t>::type;
+#pragma unroll 1
+        for (size_t i = 0; i < D; ++i) {
+            hash ^= *((input_t*)(&key[i]));
+            hash *= UINT64_C(1099511628211);
+        }
+        return hash;
     }
 };
 
@@ -85,24 +105,24 @@ public:
         return hash_fn_(key) % num_buckets_;
     }
 
-    __device__ __forceinline__ void insertPair(bool& to_be_inserted,
-                                               const uint32_t& lane_id,
-                                               const KeyTD& myKey,
-                                               const ValueT& myValue,
-                                               const uint32_t bucket_id);
-    __device__ __forceinline__ void searchKey(bool& to_be_searched,
-                                              const uint32_t& lane_id,
-                                              const KeyTD& myKey,
-                                              ValueT& myValue,
-                                              const uint32_t bucket_id);
-    __device__ __forceinline__ void deleteKey(bool& to_be_deleted,
-                                              const uint32_t& lane_id,
-                                              const KeyTD& myKey,
-                                              const uint32_t bucket_id);
+    __device__ void insertPair(bool& to_be_inserted,
+                               const uint32_t& lane_id,
+                               const KeyTD& myKey,
+                               const ValueT& myValue,
+                               const uint32_t bucket_id);
+    __device__ void searchKey(bool& to_be_searched,
+                              const uint32_t& lane_id,
+                              const KeyTD& myKey,
+                              ValueT& myValue,
+                              const uint32_t bucket_id);
+    __device__ void deleteKey(bool& to_be_deleted,
+                              const uint32_t& lane_id,
+                              const KeyTD& myKey,
+                              const uint32_t bucket_id);
 
-    __device__ __forceinline__ int32_t laneFoundKeyInWarp(const KeyTD& src_key,
-                                                          uint32_t lane_id,
-                                                          uint32_t unit_data) {
+    __device__ int32_t laneFoundKeyInWarp(const KeyTD& src_key,
+                                          uint32_t lane_id,
+                                          uint32_t unit_data) {
         bool is_lane_found =
                 /* select key lanes */
                 ((1 << lane_id) & REGULAR_NODE_KEY_MASK)

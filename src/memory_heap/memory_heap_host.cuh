@@ -5,7 +5,7 @@
 #pragma once
 
 #include "../helper/helper_cuda.h"
-#include "MemoryHeap.h"
+#include "memory_heap.h"
 
 #include <cassert>
 

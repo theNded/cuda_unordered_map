@@ -1,5 +1,6 @@
 /*
  * Copyright 2019 Saman Ashkiani
+ * Modified by Wei Dong (2019)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,46 +13,13 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
  * implied. See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
 #pragma once
 
-#include "memory_heap/MemoryHeapHost.cuh"
+#include "memory_heap/memory_heap_host.cuh"
 #include "slab_hash/instantiate.cuh"
-
-struct HasherUint321D {
-    __device__ __host__ uint64_t
-    operator()(const Coordinate<uint32_t, 1>& key) const {
-        static const uint32_t hash_x = 1791095845u;
-        static const uint32_t hash_y = 4282876139u;
-        static const uint32_t prime_devisor = 4294967291u;
-
-        return ((hash_x ^ key[0]) + hash_y) % prime_devisor;
-    }
-};
-
-template <size_t D>
-struct CoordinateHashFunc {
-    __device__ __host__ uint64_t
-    operator()(const Coordinate<uint32_t, D>& key) const {
-        uint64_t hash = UINT64_C(14695981039346656037);
-        for (int i = 0; i < D; ++i) {
-            hash ^= key[i];
-            hash *= UINT64_C(1099511628211);
-        }
-        return hash;
-    }
-};
-
-struct HasherUint32 {
-    __device__ __host__ uint32_t operator()(const uint32_t& key) const {
-        static const uint32_t hash_x = 1791095845u;
-        static const uint32_t hash_y = 4282876139u;
-        static const uint32_t prime_devisor = 4294967291u;
-
-        return ((hash_x ^ key) + hash_y) % prime_devisor;
-    }
-};
 
 /* Lightweight wrapper to handle host input */
 /* KeyT a elementary types: int, long, etc. */
