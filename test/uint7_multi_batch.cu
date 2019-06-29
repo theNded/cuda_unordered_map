@@ -100,18 +100,23 @@ int main(int argc, char** argv) {
     int num_insertions = num_elems / 2;
     printf("num elems: %d, num buckets: %d -- num insertions: %d\n", num_elems,
            num_buckets, num_insertions);
-    GpuHashTable<KeyT, D, ValueT, HashFunc> hash_table(num_elems, num_buckets,
+    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(num_elems, num_buckets,
                                                        0);
 
     /****** Insert and query first half ********/
-    float build_time =
-            hash_table.Insert(h_key.data(), h_value.data(), num_elems / 2);
+    std::vector<KeyTD> key_1st_half(h_key.begin(), h_key.begin() + num_elems / 2);
+    std::vector<ValueT> value_1st_half(h_value.begin(), h_value.begin() + num_elems / 2);
+    std::vector<KeyTD> key_2nd_half(h_key.begin() + num_elems / 2, h_key.end());
+    std::vector<ValueT> value_2nd_half(h_value.begin() + num_elems / 2, h_value.end());
+
+    float build_time = 0;
+    hash_table.Insert(key_1st_half, value_1st_half, build_time);
     printf("1) Insert finished in %.3f ms (%.3f M elements/s)\n", build_time,
            double(num_elems / 2) / (build_time * 1000.0));
 
     /* Expect 0.6 of them found */
-    float search_time =
-            hash_table.Search(h_query.data(), h_result.data(), num_queries);
+    float search_time = 0;
+    hash_table.Search(h_query, h_result, search_time);
     printf("2) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
            double(num_queries) / (search_time * 1000.0));
 
@@ -132,9 +137,7 @@ int main(int argc, char** argv) {
            num_buckets);
 
     /****** Insert and query second half ********/
-    build_time =
-            hash_table.Insert(h_key.data() + num_elems / 2,
-                              h_value.data() + num_elems / 2, num_elems / 2);
+    hash_table.Insert(key_2nd_half, value_2nd_half, build_time);
     printf("3) Insert finished in %.3f ms (%.3f M elements/s)\n", build_time,
            double(num_elems / 2) / (build_time * 1000.0));
 
@@ -157,8 +160,7 @@ int main(int argc, char** argv) {
     }
 
     /* Expect all of them found */
-    search_time =
-            hash_table.Search(h_query.data(), h_result.data(), num_queries);
+    hash_table.Search(h_query, h_result, search_time);
     printf("4) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
            double(num_queries) / (search_time * 1000.0));
     search_success = true;

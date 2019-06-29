@@ -100,17 +100,19 @@ int main(int argc, char** argv) {
     }
 
     /** Instantiate hash table **/
-    GpuHashTable<KeyT, D, ValueT, HashFunc> hash_table(num_keys, num_buckets,
+    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(num_elements, num_buckets,
                                                        0);
 
     printf("0) num_keys = %d, num_buckets = %d\n", num_keys, num_buckets);
-    float build_time =
-            hash_table.Insert(h_key.data(), h_value.data(), num_keys);
+    float build_time = 0;
+    std::vector<KeyTD> keys(h_key.begin(), h_key.begin() + num_keys);
+    std::vector<ValueT> values(h_value.begin(), h_value.begin() + num_keys);
+    hash_table.Insert(keys, values, build_time);
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", build_time,
            double(num_keys) / (build_time * 1000.0));
 
-    float search_time =
-            hash_table.Search(h_query.data(), h_result.data(), num_queries);
+    float search_time = 0;
+    hash_table.Search(h_query, h_result, search_time);
     printf("2) Hash table (existing ratio %.2f) searched in %.3f ms (%.3f M "
            "queries/s)\n",
            existing_ratio, search_time,
@@ -133,11 +135,12 @@ int main(int argc, char** argv) {
            num_buckets);
 
     /* Delete everything */
-    float delete_time = hash_table.Delete(h_key.data(), num_queries);
+    float delete_time = 0;
+    hash_table.Delete(keys, delete_time);
     printf("3) Hash table deleted in %.3f ms (%.3f M queries/s)\n", delete_time,
            double(num_queries) / (delete_time * 1000.0));
-    search_time =
-            hash_table.Search(h_query.data(), h_result.data(), num_queries);
+
+    hash_table.Search(h_query, h_result, search_time);
     printf("4) Hash table (existing ratio %.2f) searched in %.3f ms (%.3f M "
            "queries/s)\n",
            existing_ratio, search_time,
@@ -159,11 +162,10 @@ int main(int argc, char** argv) {
            num_buckets);
 
     /* Insert everything back */
-    build_time = hash_table.Insert(h_key.data(), h_value.data(), num_keys);
+    hash_table.Insert(keys, values, build_time);
     printf("5) Hash table built in %.3f ms (%.3f M elements/s)\n", build_time,
            double(num_keys) / (build_time * 1000.0));
-    search_time =
-            hash_table.Search(h_query.data(), h_result.data(), num_queries);
+    hash_table.Search(h_query, h_result, search_time);
     printf("6) Hash table (existing ratio %.2f) searched in %.3f ms (%.3f M "
            "queries/s)\n",
            existing_ratio, search_time,

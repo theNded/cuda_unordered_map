@@ -74,17 +74,17 @@ int main(int argc, char** argv) {
     /******* Instantiate hash table ********/
     printf("num elems: %d, num buckets: %d -- num insertions: %d\n", num_elems,
            num_buckets, num_insertions);
-    GpuHashTable<KeyT, D, ValueT, HashFunc> hash_table(num_elems, num_buckets, 0);
+    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(num_elems, num_buckets, 0);
 
     /****** Insert and query ********/
-    float build_time =
-            hash_table.Insert(h_key.data(), h_value.data(), num_insertions);
+    float build_time = 0;
+    hash_table.Insert(h_key, h_value, build_time);
     printf("1) Insert finished in %.3f ms (%.3f M elements/s)\n", build_time,
            double(num_insertions) / (build_time * 1000.0));
 
     std::vector<ValueT> h_result(num_insertions);
-    float search_time =
-            hash_table.Search(h_key.data(), h_result.data(), num_insertions);
+    float search_time = 0;
+    hash_table.Search(h_key, h_result, search_time);
     printf("2) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
            double(num_insertions) / (search_time * 1000.0));
 
@@ -112,13 +112,11 @@ int main(int argc, char** argv) {
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     /** Insert again **/
-    build_time =
-            hash_table.Insert(h_key.data(), h_value.data(), num_insertions);
+    hash_table.Insert(h_key, h_value, build_time);
     printf("3) Insert finished in %.3f ms (%.3f M elements/s)\n", build_time,
            double(num_insertions) / (build_time * 1000.0));
 
-    search_time =
-            hash_table.Search(h_key.data(), h_result.data(), num_insertions);
+    hash_table.Search(h_key, h_result, search_time);
     printf("4) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
            double(num_insertions) / (search_time * 1000.0));
 

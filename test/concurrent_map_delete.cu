@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
     }
 
     /** Instantiate hash table **/
-    GpuHashTable<KeyT, ValueT, HashFunc> hash_table(num_keys, num_buckets, 0);
+    CoordinateHashMap<KeyT, ValueT, HashFunc> hash_table(num_keys, num_buckets, 0);
 
     printf("0) num_keys = %d, num_buckets = %d\n", num_keys, num_buckets);
     float build_time =

@@ -24,7 +24,7 @@ __global__ void SearchKernel(
         Coordinate<KeyT, D>* d_queries,
         ValueT* d_results,
         uint32_t num_queries,
-        GpuSlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -59,7 +59,7 @@ __global__ void InsertKernel(
         Coordinate<KeyT, D>* d_key,
         ValueT* d_value,
         uint32_t num_keys,
-        GpuSlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -87,7 +87,7 @@ template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __global__ void DeleteKernel(
         Coordinate<KeyT, D>* d_key_deleted,
         uint32_t num_keys,
-        GpuSlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -118,7 +118,7 @@ __global__ void DeleteKernel(
  */
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __global__ void bucket_count_kernel(
-        GpuSlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash,
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash,
         uint32_t* d_count_result,
         uint32_t num_buckets) {
     // global warp ID
@@ -162,7 +162,7 @@ __global__ void bucket_count_kernel(
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __global__ void compute_stats_allocators(
         uint32_t* d_count_super_block,
-        GpuSlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     int num_bitmaps =

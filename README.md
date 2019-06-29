@@ -16,14 +16,14 @@ This library is a rafactored and slightly redesigned version of the original cod
 6. `make`
 
 ## High level API
-In order to use this code, it is required to include [https://github.com/owensgroup/SlabHash/blob/master/src/slab_hash.cuh](`src/slab_hash.cuh`), which itself will include all required variations of the GpuSlabHash main class.
-We have provided a simple application class [https://github.com/owensgroup/SlabHash/blob/master/src/gpu_hash_table.cuh](gpu_hash_table), where the right instance of `GpuSlabHash<KeyT, ValueT, SlabHashT>` is initialized.
-This class is just an example of how to use the GpuSlabHash in various contexts.
-Any other similar application level API should also own the dynamic memory allocator that is used by all instances of GpuSlabHash class (here just one). Finally, GpuSlabHash will be constructed with a pointer to the mentioned dynamic allocator.
+In order to use this code, it is required to include [https://github.com/owensgroup/SlabHash/blob/master/src/slab_hash.cuh](`src/slab_hash.cuh`), which itself will include all required variations of the SlabHash main class.
+We have provided a simple application class [https://github.com/owensgroup/SlabHash/blob/master/src/gpu_hash_table.cuh](gpu_hash_table), where the right instance of `SlabHash<KeyT, ValueT, SlabHashT>` is initialized.
+This class is just an example of how to use the SlabHash in various contexts.
+Any other similar application level API should also own the dynamic memory allocator that is used by all instances of SlabHash class (here just one). Finally, SlabHash will be constructed with a pointer to the mentioned dynamic allocator.
 
-There are a few variations of GpuSlabHash class. The most complete one at the moment is [https://github.com/owensgroup/SlabHash/blob/master/src/concurrent_map/cmap_class.cuh](`GpuSlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>`) which is based on the initial idea of the slab hash proposed in the paper above.
+There are a few variations of SlabHash class. The most complete one at the moment is [https://github.com/owensgroup/SlabHash/blob/master/src/concurrent_map/cmap_class.cuh](`SlabHash<KeyT, ValueT, SlabHashTypeT::ConcurrentMap>`) which is based on the initial idea of the slab hash proposed in the paper above.
 This class partially owns all the memory allocated on the GPU to actually store all the contents, side by side all units allocated by the dynamic memory allocator. 
-There is another class, named [https://github.com/owensgroup/SlabHash/blob/master/src/concurrent_map/cmap_class.cuh#L26](`GpuSlabHashContext`), which does not own any memory but has all the related member functions to use the data structure itself. The context class is the one which is used by GPU threads on the device. Here's an example of the way to use it for a [https://github.com/owensgroup/SlabHash/blob/master/src/concurrent_map/device/search_kernel.cuh](search kernel):
+There is another class, named [https://github.com/owensgroup/SlabHash/blob/master/src/concurrent_map/cmap_class.cuh#L26](`SlabHashContext`), which does not own any memory but has all the related member functions to use the data structure itself. The context class is the one which is used by GPU threads on the device. Here's an example of the way to use it for a [https://github.com/owensgroup/SlabHash/blob/master/src/concurrent_map/device/search_kernel.cuh](search kernel):
 
 ```
 template <typename KeyT, typename ValueT>
@@ -31,7 +31,7 @@ __global__ void SearchKernel(
     KeyT* d_queries,
     ValueT* d_results,
     uint32_t num_queries,
-    GpuSlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap> slab_hash) {
+    SlabHashContext<KeyT, ValueT, SlabHashTypeT::ConcurrentMap> slab_hash) {
   uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
   uint32_t lane_id = threadIdx.x & 0x1F;
 

@@ -63,12 +63,12 @@ struct CoordinateHashFunc {
  * (i.e., d_table_)
  */
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-class GpuSlabHashContext {
+class SlabHashContext {
 public:
     typedef Coordinate<KeyT, D> KeyTD;
 
 public:
-    GpuSlabHashContext();
+    SlabHashContext();
     static size_t SlabUnitSize();
 
     /** Initializer **/
@@ -139,7 +139,7 @@ private:
  * This class owns the allocated memory for the hash table
  */
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-class GpuSlabHash {
+class SlabHash {
 public:
     typedef Coordinate<KeyT, D> KeyTD;
 
@@ -153,7 +153,7 @@ private:
     int8_t* d_table_;
     size_t slab_unit_size_;
 
-    GpuSlabHashContext<KeyT, D, ValueT, HashFunc> gpu_context_;
+    SlabHashContext<KeyT, D, ValueT, HashFunc> gpu_context_;
     std::shared_ptr<MemoryHeap<KeyTD>> key_allocator_;
     std::shared_ptr<MemoryHeap<ValueT>> value_allocator_;
     std::shared_ptr<SlabListAllocator> slab_list_allocator_;
@@ -161,13 +161,13 @@ private:
     uint32_t device_idx_;
 
 public:
-    GpuSlabHash(const uint32_t num_buckets,
+    SlabHash(const uint32_t num_buckets,
                 const std::shared_ptr<SlabListAllocator>& slab_list_allocator,
                 const std::shared_ptr<MemoryHeap<KeyTD>>& key_allocator,
                 const std::shared_ptr<MemoryHeap<ValueT>>& value_allocator,
                 uint32_t device_idx);
 
-    ~GpuSlabHash();
+    ~SlabHash();
 
     // returns some debug information about the slab hash
     std::string to_string();

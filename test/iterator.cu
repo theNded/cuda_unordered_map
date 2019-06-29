@@ -29,7 +29,7 @@
 //=======================================
 
 template <typename KeyT>
-__global__ void print_table(GpuSlabHashContext<KeyT, KeyT> slab_hash) {
+__global__ void print_table(SlabHashContext<KeyT, KeyT> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t wid = tid >> 5;
     uint32_t lane_id = threadIdx.x & 0x1F;
@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
     std::mt19937 rng(seed);
     std::shuffle(h_key.begin(), h_key.end(), rng);
 
-    GpuHashTable<KeyT, KeyT> hash_table(num_keys, num_buckets, DEVICE_ID, seed,
+    CoordinateHashMap<KeyT, KeyT> hash_table(num_keys, num_buckets, DEVICE_ID, seed,
                                         false,
                                         /*identity_hash*/ true);
 

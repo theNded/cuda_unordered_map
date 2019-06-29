@@ -19,7 +19,7 @@
 #include "slab_hash.h"
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-GpuSlabHash<KeyT, D, ValueT, HashFunc>::GpuSlabHash(
+SlabHash<KeyT, D, ValueT, HashFunc>::SlabHash(
         const uint32_t num_buckets,
         const std::shared_ptr<SlabListAllocator>& slab_list_allocator,
         const std::shared_ptr<MemoryHeap<KeyTD>>& key_allocator,
@@ -54,13 +54,13 @@ GpuSlabHash<KeyT, D, ValueT, HashFunc>::GpuSlabHash(
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-GpuSlabHash<KeyT, D, ValueT, HashFunc>::~GpuSlabHash() {
+SlabHash<KeyT, D, ValueT, HashFunc>::~SlabHash() {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     CHECK_CUDA(cudaFree(d_table_));
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void GpuSlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* d_key,
+void SlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* d_key,
                                                     ValueT* d_value,
                                                     uint32_t num_keys) {
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
@@ -71,7 +71,7 @@ void GpuSlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* d_key,
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void GpuSlabHash<KeyT, D, ValueT, HashFunc>::Search(KeyTD* d_query,
+void SlabHash<KeyT, D, ValueT, HashFunc>::Search(KeyTD* d_query,
                                                     ValueT* d_result,
                                                     uint32_t num_queries) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
@@ -81,7 +81,7 @@ void GpuSlabHash<KeyT, D, ValueT, HashFunc>::Search(KeyTD* d_query,
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void GpuSlabHash<KeyT, D, ValueT, HashFunc>::Delete(KeyTD* d_key,
+void SlabHash<KeyT, D, ValueT, HashFunc>::Delete(KeyTD* d_key,
                                                     uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
@@ -90,9 +90,9 @@ void GpuSlabHash<KeyT, D, ValueT, HashFunc>::Delete(KeyTD* d_key,
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-std::string GpuSlabHash<KeyT, D, ValueT, HashFunc>::to_string() {
+std::string SlabHash<KeyT, D, ValueT, HashFunc>::to_string() {
     std::string result;
-    result += " ==== GpuSlabHash: \n";
+    result += " ==== SlabHash: \n";
     result += "\t Running on device \t\t " + std::to_string(device_idx_) + "\n";
     result +=
             "\t Number of buckets:\t\t " + std::to_string(num_buckets_) + "\n";
@@ -104,7 +104,7 @@ std::string GpuSlabHash<KeyT, D, ValueT, HashFunc>::to_string() {
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-double GpuSlabHash<KeyT, D, ValueT, HashFunc>::computeLoadFactor(int flag = 0) {
+double SlabHash<KeyT, D, ValueT, HashFunc>::computeLoadFactor(int flag = 0) {
     uint32_t* h_bucket_count = new uint32_t[num_buckets_];
     uint32_t* d_bucket_count;
     CHECK_CUDA(cudaMalloc((void**)&d_bucket_count,

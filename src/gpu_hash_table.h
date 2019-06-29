@@ -24,35 +24,37 @@
 /* Lightweight wrapper to handle host input */
 /* KeyT a elementary types: int, long, etc. */
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-class GpuHashTable {
+class CoordinateHashMap {
 public:
     typedef Coordinate<KeyT, D> KeyTD;
 
-    GpuHashTable(uint32_t max_keys,
-                 uint32_t num_buckets,
-                 const uint32_t device_idx);
-    ~GpuHashTable();
+    CoordinateHashMap(uint32_t max_keys,
+                      uint32_t num_buckets,
+                      const uint32_t device_idx = 0);
+    ~CoordinateHashMap();
 
-    float Insert(KeyTD* h_key, ValueT* h_value, uint32_t num_keys);
-    float Search(KeyTD* h_query, ValueT* h_result, uint32_t num_queries);
-    float Delete(KeyTD* h_key, uint32_t num_keys);
+    void Insert(const std::vector<KeyTD>& keys,
+                const std::vector<ValueT>& values,
+                float& time);
+    void Search(const std::vector<KeyTD>& query_keys,
+                std::vector<ValueT>& query_results,
+                float& time);
+    void Delete(const std::vector<KeyTD>& keys, float& time);
     float ComputeLoadFactor(int flag = 0);
 
 private:
     uint32_t max_keys_;
     uint32_t num_buckets_;
-    int64_t seed_;
-    bool req_values_;
-    bool identity_hash_;
     uint32_t cuda_device_idx_;
 
-    KeyTD* d_key_;
-    ValueT* d_value_;
-    KeyTD* d_query_;
-    ValueT* d_result_;
+    /** Handled by CUDA **/
+    KeyTD* key_buffer_;
+    ValueT* value_buffer_;
+    KeyTD* query_key_buffer_;
+    ValueT* query_result_buffer_;
 
     std::shared_ptr<MemoryHeap<KeyTD>> key_allocator_;
     std::shared_ptr<MemoryHeap<ValueT>> value_allocator_;
     std::shared_ptr<SlabListAllocator> slab_list_allocator_;
-    std::shared_ptr<GpuSlabHash<KeyT, D, ValueT, HashFunc>> slab_hash_;
+    std::shared_ptr<SlabHash<KeyT, D, ValueT, HashFunc>> slab_hash_;
 };

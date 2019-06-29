@@ -24,7 +24,7 @@ class SlabIterator {
 public:
     using SlabHashT = ConcurrentSetT<KeyT>;
 
-    GpuSlabHashContext<KeyT, KeyT, SlabHashTypeT::ConcurrentSet>& slab_hash_;
+    SlabHashContext<KeyT, KeyT, SlabHashTypeT::ConcurrentSet>& slab_hash_;
 
     // current position of the iterator
     KeyT* cur_ptr_;
@@ -35,7 +35,7 @@ public:
     // initialize the iterator with the first bucket's pointer address of the
     // slab hash
     __host__ __device__
-    SlabIterator(GpuSlabHashContext<KeyT, KeyT, SlabHashTypeT::ConcurrentSet>&
+    SlabIterator(SlabHashContext<KeyT, KeyT, SlabHashTypeT::ConcurrentSet>&
                          slab_hash)
         : slab_hash_(slab_hash),
           cur_ptr_(reinterpret_cast<KeyT*>(slab_hash_.getDeviceTablePointer())),
