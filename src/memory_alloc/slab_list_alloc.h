@@ -80,26 +80,20 @@ public:
     // =========
     // some helper inline address functions:
     // =========
-    __device__ __host__ uint32_t
+    __device__ __host__ __forceinline__ uint32_t
     getSuperBlockIndex(addr_t address) const;
-
-    __device__ __host__ uint32_t
+    __device__ __host__ __forceinline__ uint32_t
     getMemBlockIndex(addr_t address) const;
-
-    __device__ __host__ addr_t
+    __device__ __host__ __forceinline__ addr_t
     getMemBlockAddress(addr_t address) const;
-
-    __device__ __host__ uint32_t
+    __device__ __host__ __forceinline__ uint32_t
     getMemUnitIndex(addr_t address) const;
-
-    __device__ __host__ addr_t
+    __device__ __host__ __forceinline__ addr_t
     getMemUnitAddress(addr_t address);
-
-    __device__ uint32_t* getPointerFromSlab(const addr_t& next,
-                                            const uint32_t& lane_id);
-
-    __device__ uint32_t* getPointerForBitmap(const uint32_t super_block_index,
-                                             const uint32_t bitmap_index);
+    __device__ __forceinline__ uint32_t* getPointerFromSlab(
+            const addr_t& next, const uint32_t& lane_id);
+    __device__ __forceinline__ uint32_t* getPointerForBitmap(
+            const uint32_t super_block_index, const uint32_t bitmap_index);
 
     // called at the beginning of the kernel:
     __device__ void createMemBlockIndex(uint32_t global_warp_id);
@@ -113,15 +107,12 @@ public:
     __device__ uint32_t warpAllocate(const uint32_t& lane_id);
     __device__ uint32_t warpAllocateBulk(uint32_t& lane_id, const uint32_t k);
 
-    /*
-    This function, frees a recently allocated memory unit by a single thread.
-    Since it is untouched, there shouldn't be any worries for the actual memory
-    contents to be reset again.
-  */
-    __device__ void freeUntouched(addr_t ptr);
 
-    __host__ __device__ addr_t
-    addressDecoder(addr_t address_ptr_index);
+    // This function, frees a recently allocated memory unit by a single thread.
+    // Since it is untouched, there shouldn't be any worries for the actual memory
+    // contents to be reset again.
+    __device__ void freeUntouched(addr_t ptr);
+    __host__ __device__ addr_t addressDecoder(addr_t address_ptr_index);
 
     __host__ __device__ void print_address(addr_t address_ptr_index);
 
@@ -158,9 +149,6 @@ private:
     SlabAllocContext slab_alloc_context_;
 
 public:
-    // =========
-    // constructor:
-    // =========
     SlabAlloc() : d_super_blocks_(nullptr), hash_coef_(0) {
         // random coefficients for allocator's hash function
         std::mt19937 rng(time(0));
@@ -198,16 +186,9 @@ public:
         // initializing the slab context:
         slab_alloc_context_.Init(d_super_blocks_, hash_coef_);
     }
-
-    // =========
-    // destructor:
-    // =========
     ~SlabAlloc() { CHECK_CUDA(cudaFree(d_super_blocks_)); }
 
-    // =========
-    // Helper member functions:
-    // =========
-    SlabAllocContext* getContextPtr() { return &slab_alloc_context_; }
+    const SlabAllocContext& getContext() const { return slab_alloc_context_; }
 };
 
 /** Internal addresses managed by memory_alloc **/

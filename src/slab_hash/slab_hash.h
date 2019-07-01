@@ -40,9 +40,9 @@ public:
     /** Initializer **/
     __host__ void Init(const uint32_t num_buckets,
                        int8_t* d_table,
-                       SlabAllocContext* allocator_ctx,
-                       MemoryAllocContext<KeyTD> key_allocator_ctx,
-                       MemoryAllocContext<ValueT> value_allocator_ctx);
+                       const SlabAllocContext& allocator_ctx,
+                       const MemoryAllocContext<KeyTD>& key_allocator_ctx,
+                       const MemoryAllocContext<ValueT>& value_allocator_ctx);
 
     /** Core SIMT operations **/
     __device__ void InsertPair(bool& to_be_inserted,
@@ -54,6 +54,7 @@ public:
                            const uint32_t& lane_id,
                            const KeyTD& myKey,
                            ValueT& myValue,
+                           bool& found,
                            const uint32_t bucket_id);
     __device__ void Delete(bool& to_be_deleted,
                            const uint32_t& lane_id,
@@ -71,22 +72,17 @@ public:
     __device__ __forceinline__ int32_t
     laneEmptyKeyInWarp(const uint32_t unit_data);
 
-    __device__ __host__ __forceinline__ SlabAllocContext&
-    getAllocatorContext();
-
+    __device__ __host__ __forceinline__ SlabAllocContext& getAllocatorContext();
     __device__ __host__ __forceinline__ ConcurrentSlab* getDeviceTablePointer();
-
     __device__ __forceinline__ uint32_t* getPointerFromSlab(
             const addr_t& slab_address, const uint32_t lane_id);
-
     __device__ __forceinline__ uint32_t* getPointerFromBucket(
             const uint32_t bucket_id, const uint32_t lane_id);
 
 private:
     // this function should be operated in a warp-wide fashion
     // TODO: add required asserts to make sure this is true in tests/debugs
-    __device__ __forceinline__ addr_t
-    AllocateSlab(const uint32_t& lane_id);
+    __device__ __forceinline__ addr_t AllocateSlab(const uint32_t& lane_id);
 
     // a thread-wide function to free the slab that was just allocated
     __device__ __forceinline__ void FreeSlab(const addr_t slab_ptr);
@@ -128,18 +124,21 @@ private:
 
 public:
     SlabHash(const uint32_t num_buckets,
-                const std::shared_ptr<SlabAlloc>& slab_list_allocator,
-                const std::shared_ptr<MemoryAlloc<KeyTD>>& key_allocator,
-                const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
-                uint32_t device_idx);
+             const std::shared_ptr<SlabAlloc>& slab_list_allocator,
+             const std::shared_ptr<MemoryAlloc<KeyTD>>& key_allocator,
+             const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
+             uint32_t device_idx);
 
     ~SlabHash();
 
     // returns some debug information about the slab hash
     std::string to_string();
-    double computeLoadFactor(int flag);
+    double ComputeLoadFactor(int flag);
 
     void Insert(KeyTD* d_key, ValueT* d_value, uint32_t num_keys);
-    void Search(KeyTD* d_query, ValueT* d_result, uint32_t num_queries);
+    void Search(KeyTD* d_query,
+                ValueT* d_value,
+                uint8_t* d_result,
+                uint32_t num_queries);
     void Delete(KeyTD* d_key, uint32_t num_keys);
 };

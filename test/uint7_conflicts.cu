@@ -58,6 +58,7 @@ int main(int argc, char** argv) {
     std::vector<KeyTD> h_key(num_insertions);
     std::vector<ValueT> h_value(num_insertions);
     std::vector<ValueT> h_result_gt(num_insertions);
+    std::vector<uint8_t> h_found_gt(num_insertions);
     const int64_t seed = 1;
     std::mt19937 rng(seed);
     std::vector<uint32_t> index(num_insertions * D);
@@ -69,6 +70,7 @@ int main(int argc, char** argv) {
         h_key[i][d] = index[i * D + d];
       }
       h_result_gt[i] = h_value[i] = i;
+      h_found_gt[i] = 1;
     }
 
     /******* Instantiate hash table ********/
@@ -83,18 +85,27 @@ int main(int argc, char** argv) {
            double(num_insertions) / (build_time * 1000.0));
 
     std::vector<ValueT> h_result(num_insertions);
+    std::vector<uint8_t> h_found(num_insertions);
     float search_time = 0;
-    hash_table.Search(h_key, h_result, search_time);
+    hash_table.Search(h_key, h_result, h_found, search_time);
     printf("2) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
            double(num_insertions) / (search_time * 1000.0));
 
     bool search_success = true;
     for (int i = 0; i < num_insertions; i++) {
-        if (h_result_gt[i] != h_result[i]) {
-            printf("### Result at index %d: [%d] -> %d, expected: %d\n", i,
-                   h_key[i][0], h_result[i], h_value[i]);
+        if (!h_found_gt[i] && h_found[i]) {
+            printf("### wrong result at index %d: should be NOT FOUND\n", i);
             search_success = false;
-            break;
+        }
+        if (h_found_gt[i] && !h_found[i]) {
+            printf("### wrong result at index %d: should be FOUND\n", i);
+            search_success = false;
+        }
+        if (h_found_gt[i] && h_found[i] && (h_result_gt[i] != h_result[i])) {
+            printf("### wrong result at index %d: [%d] -> %d, but should be "
+                   "%d\n",
+                   i, h_key[i][0], h_result[i], h_result_gt[i]);
+            search_success = false;
         }
     }
     if (search_success) {
@@ -116,18 +127,25 @@ int main(int argc, char** argv) {
     printf("3) Insert finished in %.3f ms (%.3f M elements/s)\n", build_time,
            double(num_insertions) / (build_time * 1000.0));
 
-    hash_table.Search(h_key, h_result, search_time);
+    hash_table.Search(h_key, h_result, h_found, search_time);
     printf("4) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
            double(num_insertions) / (search_time * 1000.0));
 
     search_success = true;
     for (int i = 0; i < num_insertions; i++) {
-        /* We expect nothing is changed */
-        if (h_result_gt[i] != h_result[i]) {
-            printf("### Result at index %d: [%d] -> %d, expected: %d\n", i,
-                   h_key[i][0], h_result[i], h_value[i]);
-            search_success = false; 
-
+        if (!h_found_gt[i] && h_found[i]) {
+            printf("### wrong result at index %d: should be NOT FOUND\n", i);
+            search_success = false;
+        }
+        if (h_found_gt[i] && !h_found[i]) {
+            printf("### wrong result at index %d: should be FOUND\n", i);
+            search_success = false;
+        }
+        if (h_found_gt[i] && h_found[i] && (h_result_gt[i] != h_result[i])) {
+            printf("### wrong result at index %d: [%d] -> %d, but should be "
+                   "%d\n",
+                   i, h_key[i][0], h_result[i], h_result_gt[i]);
+            search_success = false;
         }
     }
     if (search_success) {

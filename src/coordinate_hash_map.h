@@ -35,10 +35,16 @@ public:
     void Insert(const std::vector<KeyTD>& keys,
                 const std::vector<ValueT>& values,
                 float& time);
-    void Search(const std::vector<KeyTD>& query_keys,
-                std::vector<ValueT>& query_results,
-                float& time);
+    /* Similar to Insert, but we won't assign value for them; it's more like 'reserve' */
+    void Allocate(const std::vector<KeyTD>& keys, float& time);
     void Delete(const std::vector<KeyTD>& keys, float& time);
+
+    /* Returned value[i] is undefined if query_access[i] == false */
+    void Search(const std::vector<KeyTD>& query_keys,
+                std::vector<ValueT>& query_values,
+                std::vector<uint8_t>& query_results,
+                float& time);
+
     float ComputeLoadFactor(int flag = 0);
 
 private:
@@ -50,7 +56,8 @@ private:
     KeyTD* key_buffer_;
     ValueT* value_buffer_;
     KeyTD* query_key_buffer_;
-    ValueT* query_result_buffer_;
+    ValueT* query_value_buffer_;
+    uint8_t *query_result_buffer_;
 
     std::shared_ptr<MemoryAlloc<KeyTD>> key_allocator_;
     std::shared_ptr<MemoryAlloc<ValueT>> value_allocator_;

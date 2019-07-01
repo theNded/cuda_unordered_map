@@ -24,6 +24,7 @@ template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __global__ void SearchKernel(
         Coordinate<KeyT, D>* d_queries,
         ValueT* d_results,
+        uint8_t* d_found,
         uint32_t num_queries,
         SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -38,7 +39,8 @@ __global__ void SearchKernel(
     slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
 
     Coordinate<KeyT, D> myQuery;
-    ValueT myResult = static_cast<ValueT>(SEARCH_NOT_FOUND);
+    ValueT myResult;
+    bool found = false;
     uint32_t myBucket = 0;
     bool to_search = false;
     if (tid < num_queries) {
@@ -47,11 +49,12 @@ __global__ void SearchKernel(
         to_search = true;
     }
 
-    slab_hash.Search(to_search, lane_id, myQuery, myResult, myBucket);
+    slab_hash.Search(to_search, lane_id, myQuery, myResult, found, myBucket);
 
     // writing back the results:
     if (tid < num_queries) {
         d_results[tid] = myResult;
+        d_found[tid] = found ? 1 : 0;
     }
 }
 
@@ -139,14 +142,14 @@ __global__ void bucket_count_kernel(
 
     uint32_t src_unit_data = *slab_hash.getPointerFromBucket(wid, lane_id);
 
-    count += __popc(__ballot_sync(0xFFFFFFFF, src_unit_data != EMPTY_KEY) &
-                    REGULAR_NODE_KEY_MASK);
+    count += __popc(
+            __ballot_sync(REGULAR_NODE_KEY_MASK, src_unit_data != EMPTY_KEY));
     uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
 
     while (next != EMPTY_SLAB_POINTER) {
         src_unit_data = *slab_hash.getPointerFromSlab(next, lane_id);
-        count += __popc(__ballot_sync(0xFFFFFFFF, src_unit_data != EMPTY_KEY) &
-                        REGULAR_NODE_KEY_MASK);
+        count += __popc(__ballot_sync(REGULAR_NODE_KEY_MASK,
+                                      src_unit_data != EMPTY_KEY));
         next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
     }
     // writing back the results:

@@ -77,15 +77,19 @@ int main(int argc, char** argv) {
     std::vector<ValueT> h_result_gt(num_queries);
     std::vector<ValueT> h_result(num_queries);
 
+    std::vector<uint8_t> h_found_gt(num_queries);
+    std::vector<uint8_t> h_found(num_queries);
+
     /* from the 1st half */
     for (int i = 0; i < num_existing; i++) {
         h_query[i] = h_key[num_elems / 2 - 1 - i];
         h_result_gt[i] = h_value[num_elems / 2 - 1 - i];
+        h_found_gt[i] = 1;
     }
     /* from the 2nd half */
     for (int i = 0; i < (num_queries - num_existing); i++) {
         h_query[num_existing + i] = h_key[num_elems / 2 + i];
-        h_result_gt[num_existing + i] = SEARCH_NOT_FOUND;
+        h_found_gt[num_existing + i] = 0;
     }
     /* shuffle */
     std::vector<int> q_index(num_queries);
@@ -94,6 +98,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < num_queries; i++) {
         std::swap(h_query[i], h_query[q_index[i]]);
         std::swap(h_result_gt[i], h_result_gt[q_index[i]]);
+        std::swap(h_found_gt[i], h_found_gt[q_index[i]]);
     }
 
     /******* Instantiate hash table ********/
@@ -116,17 +121,25 @@ int main(int argc, char** argv) {
 
     /* Expect 0.6 of them found */
     float search_time = 0;
-    hash_table.Search(h_query, h_result, search_time);
+    hash_table.Search(h_query, h_result, h_found, search_time);
     printf("2) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
            double(num_queries) / (search_time * 1000.0));
 
     bool search_success = true;
     for (int i = 0; i < num_queries; i++) {
-        if (h_result_gt[i] != h_result[i]) {
-            printf("### Result at index %d: [%d] -> %d, expected: %d\n", i,
-                   h_query[i][0], h_result[i], h_result_gt[i]);
+        if (!h_found_gt[i] && h_found[i]) {
+            printf("### wrong result at index %d: should be NOT FOUND\n", i);
             search_success = false;
-            break;
+        }
+        if (h_found_gt[i] && !h_found[i]) {
+            printf("### wrong result at index %d: should be FOUND\n", i);
+            search_success = false;
+        }
+        if (h_found_gt[i] && h_found[i] && (h_result_gt[i] != h_result[i])) {
+            printf("### wrong result at index %d: [%d] -> %d, but should be "
+                   "%d\n",
+                   i, h_query[i][0], h_result[i], h_result_gt[i]);
+            search_success = false;
         }
     }
     if (search_success) {
@@ -145,11 +158,13 @@ int main(int argc, char** argv) {
     for (int i = 0; i < num_existing; i++) {
         h_query[i] = h_key[num_elems / 2 - 1 - i];
         h_result_gt[i] = h_value[num_elems / 2 - 1 - i];
+        h_found_gt[i] = 1;
     }
     /* from the 2nd half */
     for (int i = 0; i < (num_queries - num_existing); i++) {
         h_query[num_existing + i] = h_key[num_elems / 2 + i];
         h_result_gt[num_existing + i] = h_value[num_elems/2 + i];
+        h_found_gt[num_existing + i] = 1;
     }
     /* shuffle */
     std::iota(q_index.begin(), q_index.end(), 0);
@@ -157,19 +172,28 @@ int main(int argc, char** argv) {
     for (int i = 0; i < num_queries; i++) {
         std::swap(h_query[i], h_query[q_index[i]]);
         std::swap(h_result_gt[i], h_result_gt[q_index[i]]);
+        std::swap(h_found_gt[i], h_found_gt[q_index[i]]);
     }
 
     /* Expect all of them found */
-    hash_table.Search(h_query, h_result, search_time);
+    hash_table.Search(h_query, h_result, h_found, search_time);
     printf("4) Query finished in %.3f ms (%.3f M queries/s)\n", search_time,
            double(num_queries) / (search_time * 1000.0));
     search_success = true;
     for (int i = 0; i < num_queries; i++) {
-        if (h_result_gt[i] != h_result[i]) {
-            printf("### Result at index %d: [%d] -> %d, expected: %d\n", i,
-                   h_query[i][0], h_result[i], h_result_gt[i]);
+        if (!h_found_gt[i] && h_found[i]) {
+            printf("### wrong result at index %d: should be NOT FOUND\n", i);
             search_success = false;
-            break;
+        }
+        if (h_found_gt[i] && !h_found[i]) {
+            printf("### wrong result at index %d: should be FOUND\n", i);
+            search_success = false;
+        }
+        if (h_found_gt[i] && h_found[i] && (h_result_gt[i] != h_result[i])) {
+            printf("### wrong result at index %d: [%d] -> %d, but should be "
+                   "%d\n",
+                   i, h_query[i][0], h_result[i], h_result_gt[i]);
+            search_success = false;
         }
     }
     if (search_success) {

@@ -50,7 +50,7 @@ SlabHash<KeyT, D, ValueT, HashFunc>::SlabHash(
     CHECK_CUDA(cudaMemset(d_table_, 0xFF, slab_unit_size_ * num_buckets_));
 
     gpu_context_.Init(
-            num_buckets_, d_table_, slab_list_allocator_->getContextPtr(),
+            num_buckets_, d_table_, slab_list_allocator_->getContext(),
             key_allocator_->gpu_context_, value_allocator_->gpu_context_);
 }
 
@@ -74,11 +74,12 @@ void SlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* d_key,
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 void SlabHash<KeyT, D, ValueT, HashFunc>::Search(KeyTD* d_query,
                                                  ValueT* d_result,
+                                                 uint8_t *d_found,
                                                  uint32_t num_queries) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_queries + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     SearchKernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
-            d_query, d_result, num_queries, gpu_context_);
+            d_query, d_result, d_found, num_queries, gpu_context_);
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
@@ -105,7 +106,7 @@ std::string SlabHash<KeyT, D, ValueT, HashFunc>::to_string() {
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-double SlabHash<KeyT, D, ValueT, HashFunc>::computeLoadFactor(int flag = 0) {
+double SlabHash<KeyT, D, ValueT, HashFunc>::ComputeLoadFactor(int flag = 0) {
     uint32_t* h_bucket_count = new uint32_t[num_buckets_];
     uint32_t* d_bucket_count;
     CHECK_CUDA(cudaMalloc((void**)&d_bucket_count,

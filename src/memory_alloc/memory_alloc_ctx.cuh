@@ -23,7 +23,7 @@
  *  0 <- heap_counter   0                    0                    0
  */
 template <typename T>
-__device__ int MemoryAllocContext<T>::Allocate() {
+__device__ addr_t MemoryAllocContext<T>::Allocate() {
     int index = atomicAdd(heap_counter_, 1);
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
     assert(index < max_capacity_);
@@ -32,16 +32,16 @@ __device__ int MemoryAllocContext<T>::Allocate() {
 }
 
 template <typename T>
-__device__ void MemoryAllocContext<T>::Free(size_t addr) {
+__device__ void MemoryAllocContext<T>::Free(addr_t addr) {
     int index = atomicSub(heap_counter_, 1);
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
     assert(index >= 1);
 #endif
-    heap_[index - 1] = (int)addr;
+    heap_[index - 1] = addr;
 }
 
 template <typename T>
-__device__ int &MemoryAllocContext<T>::addr_on_heap(size_t index) {
+__device__ addr_t &MemoryAllocContext<T>::addr_on_heap(size_t index) {
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
     assert(index < max_capacity_);
 #endif
@@ -49,7 +49,7 @@ __device__ int &MemoryAllocContext<T>::addr_on_heap(size_t index) {
 }
 
 template <typename T>
-__device__ T &MemoryAllocContext<T>::value_at(size_t addr) {
+__device__ T &MemoryAllocContext<T>::value_at(addr_t addr) {
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
     assert(addr < max_capacity_);
 #endif
@@ -57,7 +57,7 @@ __device__ T &MemoryAllocContext<T>::value_at(size_t addr) {
 }
 
 template <typename T>
-__device__ const T &MemoryAllocContext<T>::value_at(size_t addr) const {
+__device__ const T &MemoryAllocContext<T>::value_at(addr_t addr) const {
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
     assert(addr < max_capacity_);
 #endif

@@ -37,12 +37,12 @@ template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __host__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Init(
         const uint32_t num_buckets,
         int8_t* d_table,
-        SlabAllocContext* allocator_ctx,
-        MemoryAllocContext<KeyTD> key_allocator_ctx,
-        MemoryAllocContext<ValueT> value_allocator_ctx) {
+        const SlabAllocContext &allocator_ctx,
+        const MemoryAllocContext<KeyTD> &key_allocator_ctx,
+        const MemoryAllocContext<ValueT> &value_allocator_ctx) {
     num_buckets_ = num_buckets;
     d_table_ = reinterpret_cast<ConcurrentSlab*>(d_table);
-    slab_list_allocator_ctx_ = *allocator_ctx;
+    slab_list_allocator_ctx_ = allocator_ctx;
     key_allocator_ctx_ = key_allocator_ctx;
     value_allocator_ctx_ = value_allocator_ctx;
 }
@@ -131,6 +131,7 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Search(
         const uint32_t& lane_id,
         const KeyTD& myKey,
         ValueT& myValue,
+        bool &found,
         const uint32_t bucket_id) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = work_queue;
@@ -145,7 +146,6 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Search(
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANE_MASK, bucket_id, src_lane, WARP_WIDTH);
 
-        // TODO generalize it to multiple ints
         KeyTD src_key;
 #pragma unroll 1
         for (size_t i = 0; i < D; ++i) {
@@ -169,6 +169,7 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Search(
 
             if (lane_id == src_lane) {
                 myValue = value_allocator_ctx_.value_at(found_value);
+                found = true;
                 to_search = false;
             }
         }
@@ -183,7 +184,7 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Search(
             /** 2.1. Next slab is empty, ABORT **/
             if (curr_slab_next_ptr == EMPTY_SLAB_POINTER) {
                 if (lane_id == src_lane) {
-                    myValue = static_cast<ValueT>(SEARCH_NOT_FOUND);
+                    found = false;
                     to_search = false;
                 }
             }
