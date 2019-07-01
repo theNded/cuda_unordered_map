@@ -54,6 +54,6 @@ private:
 
     std::shared_ptr<MemoryAlloc<KeyTD>> key_allocator_;
     std::shared_ptr<MemoryAlloc<ValueT>> value_allocator_;
-    std::shared_ptr<SlabListAlloc> slab_list_allocator_;
+    std::shared_ptr<SlabAlloc> slab_list_allocator_;
     std::shared_ptr<SlabHash<KeyT, D, ValueT, HashFunc>> slab_hash_;
 };

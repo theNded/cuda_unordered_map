@@ -19,9 +19,9 @@
 #include <cassert>
 #include <memory>
 
-#include "coordinate.h"
 #include "../memory_alloc/memory_alloc.h"
-#include "../memory_alloc/slab_list_alloc.cuh"
+#include "../memory_alloc/slab_list_alloc.h"
+#include "coordinate.h"
 
 /*
  * This is the main class that will be shallowly copied into the device to be
@@ -40,7 +40,7 @@ public:
     /** Initializer **/
     __host__ void Init(const uint32_t num_buckets,
                        int8_t* d_table,
-                       SlabListAllocContext* allocator_ctx,
+                       SlabAllocContext* allocator_ctx,
                        MemoryAllocContext<KeyTD> key_allocator_ctx,
                        MemoryAllocContext<ValueT> value_allocator_ctx);
 
@@ -71,13 +71,13 @@ public:
     __device__ __forceinline__ int32_t
     laneEmptyKeyInWarp(const uint32_t unit_data);
 
-    __device__ __host__ __forceinline__ SlabListAllocContext&
+    __device__ __host__ __forceinline__ SlabAllocContext&
     getAllocatorContext();
 
     __device__ __host__ __forceinline__ ConcurrentSlab* getDeviceTablePointer();
 
     __device__ __forceinline__ uint32_t* getPointerFromSlab(
-            const SlabAddressT& slab_address, const uint32_t lane_id);
+            const addr_t& slab_address, const uint32_t lane_id);
 
     __device__ __forceinline__ uint32_t* getPointerFromBucket(
             const uint32_t bucket_id, const uint32_t lane_id);
@@ -85,18 +85,18 @@ public:
 private:
     // this function should be operated in a warp-wide fashion
     // TODO: add required asserts to make sure this is true in tests/debugs
-    __device__ __forceinline__ SlabAllocAddressT
+    __device__ __forceinline__ addr_t
     AllocateSlab(const uint32_t& lane_id);
 
     // a thread-wide function to free the slab that was just allocated
-    __device__ __forceinline__ void FreeSlab(const SlabAllocAddressT slab_ptr);
+    __device__ __forceinline__ void FreeSlab(const addr_t slab_ptr);
 
 private:
     uint32_t num_buckets_;
     HashFunc hash_fn_;
 
     ConcurrentSlab* d_table_;
-    SlabListAllocContext slab_list_allocator_ctx_;
+    SlabAllocContext slab_list_allocator_ctx_;
     MemoryAllocContext<KeyTD> key_allocator_ctx_;
     MemoryAllocContext<ValueT> value_allocator_ctx_;
 };
@@ -122,13 +122,13 @@ private:
     SlabHashContext<KeyT, D, ValueT, HashFunc> gpu_context_;
     std::shared_ptr<MemoryAlloc<KeyTD>> key_allocator_;
     std::shared_ptr<MemoryAlloc<ValueT>> value_allocator_;
-    std::shared_ptr<SlabListAlloc> slab_list_allocator_;
+    std::shared_ptr<SlabAlloc> slab_list_allocator_;
 
     uint32_t device_idx_;
 
 public:
     SlabHash(const uint32_t num_buckets,
-                const std::shared_ptr<SlabListAlloc>& slab_list_allocator,
+                const std::shared_ptr<SlabAlloc>& slab_list_allocator,
                 const std::shared_ptr<MemoryAlloc<KeyTD>>& key_allocator,
                 const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
                 uint32_t device_idx);

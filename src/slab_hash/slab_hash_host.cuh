@@ -22,7 +22,7 @@
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 SlabHash<KeyT, D, ValueT, HashFunc>::SlabHash(
         const uint32_t num_buckets,
-        const std::shared_ptr<SlabListAlloc>& slab_list_allocator,
+        const std::shared_ptr<SlabAlloc>& slab_list_allocator,
         const std::shared_ptr<MemoryAlloc<KeyTD>>& key_allocator,
         const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
         uint32_t device_idx)

@@ -14,7 +14,7 @@ __global__ void ResetMemoryAllocKernel(MemoryAllocContext<T> ctx) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < ctx.max_capacity_) {
         ctx.value_at(i) = T(); /* This is not necessary. */
-        ctx.internal_addr_at(i) = i;
+        ctx.addr_on_heap(i) = i;
     }
 }
 

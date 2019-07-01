@@ -23,7 +23,7 @@
  *  0 <- heap_counter   0                    0                    0
  */
 template <typename T>
-__device__ int MemoryAllocContext<T>::Malloc() {
+__device__ int MemoryAllocContext<T>::Allocate() {
     int index = atomicAdd(heap_counter_, 1);
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
     assert(index < max_capacity_);
@@ -41,7 +41,7 @@ __device__ void MemoryAllocContext<T>::Free(size_t addr) {
 }
 
 template <typename T>
-__device__ int &MemoryAllocContext<T>::internal_addr_at(size_t index) {
+__device__ int &MemoryAllocContext<T>::addr_on_heap(size_t index) {
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
     assert(index < max_capacity_);
 #endif

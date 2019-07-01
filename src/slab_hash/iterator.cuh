@@ -31,7 +31,7 @@ public:
     uint32_t cur_size_;    // keep track of current level's size (in units of
                            // sizeof(KeyT))
     uint32_t cur_bucket_;  // keeping track of the current bucket
-    SlabAddressT cur_slab_address_;
+    addr_t cur_slab_address_;
     // initialize the iterator with the first bucket's pointer address of the
     // slab hash
     __host__ __device__

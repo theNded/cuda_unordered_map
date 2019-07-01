@@ -19,8 +19,8 @@
 #pragma once
 
 #include "coordinate_hash_map.h"
+#include "memory_alloc/memory_alloc_host.cuh"
 #include "slab_hash/slab_hash_host.cuh"
-#include "memory_alloc/memory_alloc.cuh"
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 CoordinateHashMap<KeyT, D, ValueT, HashFunc>::CoordinateHashMap(
@@ -45,7 +45,7 @@ CoordinateHashMap<KeyT, D, ValueT, HashFunc>::CoordinateHashMap(
     // allocate an initialize the allocator:
     key_allocator_ = std::make_shared<MemoryAlloc<KeyTD>>(max_keys_);
     value_allocator_ = std::make_shared<MemoryAlloc<ValueT>>(max_keys_);
-    slab_list_allocator_ = std::make_shared<SlabListAlloc>();
+    slab_list_allocator_ = std::make_shared<SlabAlloc>();
     slab_hash_ = std::make_shared<SlabHash<KeyT, D, ValueT, HashFunc>>(
             num_buckets_, slab_list_allocator_, key_allocator_,
             value_allocator_, cuda_device_idx_);

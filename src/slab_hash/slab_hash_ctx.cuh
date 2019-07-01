@@ -16,9 +16,9 @@
 
 #pragma once
 
-#include "slab_hash.h"
-#include "../memory_alloc/slab_list_alloc.cuh"
 #include "../memory_alloc/memory_alloc_ctx.cuh"
+#include "../memory_alloc/slab_list_alloc_ctx.cuh"
+#include "slab_hash.h"
 
 // fixed known parameters:
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
@@ -37,7 +37,7 @@ template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __host__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Init(
         const uint32_t num_buckets,
         int8_t* d_table,
-        SlabListAllocContext* allocator_ctx,
+        SlabAllocContext* allocator_ctx,
         MemoryAllocContext<KeyTD> key_allocator_ctx,
         MemoryAllocContext<ValueT> value_allocator_ctx) {
     num_buckets_ = num_buckets;
@@ -79,7 +79,7 @@ SlabHashContext<KeyT, D, ValueT, HashFunc>::laneEmptyKeyInWarp(
 
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ __host__ __forceinline__ SlabListAllocContext&
+__device__ __host__ __forceinline__ SlabAllocContext&
 SlabHashContext<KeyT, D, ValueT, HashFunc>::getAllocatorContext() {
     return slab_list_allocator_ctx_;
 }
@@ -93,7 +93,7 @@ SlabHashContext<KeyT, D, ValueT, HashFunc>::getDeviceTablePointer() {
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __device__ __forceinline__ uint32_t*
 SlabHashContext<KeyT, D, ValueT, HashFunc>::getPointerFromSlab(
-        const SlabAddressT& slab_address, const uint32_t lane_id) {
+        const addr_t& slab_address, const uint32_t lane_id) {
     return slab_list_allocator_ctx_.getPointerFromSlab(slab_address, lane_id);
 }
 
@@ -108,7 +108,7 @@ SlabHashContext<KeyT, D, ValueT, HashFunc>::getPointerFromBucket(
 // this function should be operated in a warp-wide fashion
 // TODO: add required asserts to make sure this is true in tests/debugs
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ __forceinline__ SlabAllocAddressT
+__device__ __forceinline__ addr_t
 SlabHashContext<KeyT, D, ValueT, HashFunc>::AllocateSlab(
         const uint32_t& lane_id) {
     return slab_list_allocator_ctx_.warpAllocate(lane_id);
@@ -118,7 +118,7 @@ SlabHashContext<KeyT, D, ValueT, HashFunc>::AllocateSlab(
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __device__ __forceinline__ void
 SlabHashContext<KeyT, D, ValueT, HashFunc>::FreeSlab(
-        const SlabAllocAddressT slab_ptr) {
+        const addr_t slab_ptr) {
     slab_list_allocator_ctx_.freeUntouched(slab_ptr);
 }
 
@@ -221,10 +221,10 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::InsertPair(
     int key_addr = EMPTY_KEY;
     int value_addr = EMPTY_KEY;
     if (to_be_inserted) {
-        key_addr = key_allocator_ctx_.Malloc();
+        key_addr = key_allocator_ctx_.Allocate();
         key_allocator_ctx_.value_at(key_addr) = myKey;
 
-        value_addr = value_allocator_ctx_.Malloc();
+        value_addr = value_allocator_ctx_.Allocate();
         value_allocator_ctx_.value_at(value_addr) = myValue;
     }
 

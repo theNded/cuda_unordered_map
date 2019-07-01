@@ -40,3 +40,5 @@ static constexpr uint32_t NEXT_SLAB_POINTER_LANE = 31;
 /* data:    0    0         1   1   1   1 => 00 11 11 11 ... 11 11 */
 static constexpr uint32_t REGULAR_NODE_KEY_MASK = 0x15555555;
 static constexpr uint32_t REGULAR_NODE_DATA_MASK = 0x3FFFFFFF;
+
+using addr_t = uint32_t;
