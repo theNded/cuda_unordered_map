@@ -17,6 +17,8 @@
 #pragma once
 
 #include "slab_hash.h"
+#include "../memory_alloc/slab_list_alloc.cuh"
+#include "../memory_alloc/memory_alloc_ctx.cuh"
 
 // fixed known parameters:
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
@@ -35,9 +37,9 @@ template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __host__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Init(
         const uint32_t num_buckets,
         int8_t* d_table,
-        SlabListAllocatorContext* allocator_ctx,
-        MemoryHeapContext<KeyTD> key_allocator_ctx,
-        MemoryHeapContext<ValueT> value_allocator_ctx) {
+        SlabListAllocContext* allocator_ctx,
+        MemoryAllocContext<KeyTD> key_allocator_ctx,
+        MemoryAllocContext<ValueT> value_allocator_ctx) {
     num_buckets_ = num_buckets;
     d_table_ = reinterpret_cast<ConcurrentSlab*>(d_table);
     slab_list_allocator_ctx_ = *allocator_ctx;
@@ -77,7 +79,7 @@ SlabHashContext<KeyT, D, ValueT, HashFunc>::laneEmptyKeyInWarp(
 
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ __host__ __forceinline__ SlabListAllocatorContext&
+__device__ __host__ __forceinline__ SlabListAllocContext&
 SlabHashContext<KeyT, D, ValueT, HashFunc>::getAllocatorContext() {
     return slab_list_allocator_ctx_;
 }

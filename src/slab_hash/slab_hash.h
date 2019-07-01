@@ -19,43 +19,9 @@
 #include <cassert>
 #include <memory>
 
-#include "../memory_heap/memory_heap_host.cuh"
-
-template <typename T, size_t D>
-struct Coordinate {
-private:
-    T data_[D];
-
-public:
-    __device__ __host__ T& operator[](size_t i) { return data_[i]; }
-    __device__ __host__ const T& operator[](size_t i) const { return data_[i]; }
-
-    __device__ __host__ bool operator==(const Coordinate<T, D>& rhs) const {
-        bool equal = true;
-#pragma unroll 1
-        for (size_t i = 0; i < D; ++i) {
-            equal &= (data_[i] == rhs[i]);
-        }
-        return equal;
-    }
-};
-
-template <typename T, size_t D>
-struct CoordinateHashFunc {
-    __device__ __host__ uint64_t operator()(const Coordinate<T, D>& key) const {
-        uint64_t hash = UINT64_C(14695981039346656037);
-
-        /** We only support 4-byte and 8-byte types **/
-        using input_t = typename std::conditional<sizeof(T) == sizeof(uint32_t),
-                                                  uint32_t, uint64_t>::type;
-#pragma unroll 1
-        for (size_t i = 0; i < D; ++i) {
-            hash ^= *((input_t*)(&key[i]));
-            hash *= UINT64_C(1099511628211);
-        }
-        return hash;
-    }
-};
+#include "coordinate.h"
+#include "../memory_alloc/memory_alloc.h"
+#include "../memory_alloc/slab_list_alloc.cuh"
 
 /*
  * This is the main class that will be shallowly copied into the device to be
@@ -74,9 +40,9 @@ public:
     /** Initializer **/
     __host__ void Init(const uint32_t num_buckets,
                        int8_t* d_table,
-                       SlabListAllocatorContext* allocator_ctx,
-                       MemoryHeapContext<KeyTD> key_allocator_ctx,
-                       MemoryHeapContext<ValueT> value_allocator_ctx);
+                       SlabListAllocContext* allocator_ctx,
+                       MemoryAllocContext<KeyTD> key_allocator_ctx,
+                       MemoryAllocContext<ValueT> value_allocator_ctx);
 
     /** Core SIMT operations **/
     __device__ void InsertPair(bool& to_be_inserted,
@@ -105,7 +71,7 @@ public:
     __device__ __forceinline__ int32_t
     laneEmptyKeyInWarp(const uint32_t unit_data);
 
-    __device__ __host__ __forceinline__ SlabListAllocatorContext&
+    __device__ __host__ __forceinline__ SlabListAllocContext&
     getAllocatorContext();
 
     __device__ __host__ __forceinline__ ConcurrentSlab* getDeviceTablePointer();
@@ -130,9 +96,9 @@ private:
     HashFunc hash_fn_;
 
     ConcurrentSlab* d_table_;
-    SlabListAllocatorContext slab_list_allocator_ctx_;
-    MemoryHeapContext<KeyTD> key_allocator_ctx_;
-    MemoryHeapContext<ValueT> value_allocator_ctx_;
+    SlabListAllocContext slab_list_allocator_ctx_;
+    MemoryAllocContext<KeyTD> key_allocator_ctx_;
+    MemoryAllocContext<ValueT> value_allocator_ctx_;
 };
 
 /*
@@ -154,17 +120,17 @@ private:
     size_t slab_unit_size_;
 
     SlabHashContext<KeyT, D, ValueT, HashFunc> gpu_context_;
-    std::shared_ptr<MemoryHeap<KeyTD>> key_allocator_;
-    std::shared_ptr<MemoryHeap<ValueT>> value_allocator_;
-    std::shared_ptr<SlabListAllocator> slab_list_allocator_;
+    std::shared_ptr<MemoryAlloc<KeyTD>> key_allocator_;
+    std::shared_ptr<MemoryAlloc<ValueT>> value_allocator_;
+    std::shared_ptr<SlabListAlloc> slab_list_allocator_;
 
     uint32_t device_idx_;
 
 public:
     SlabHash(const uint32_t num_buckets,
-                const std::shared_ptr<SlabListAllocator>& slab_list_allocator,
-                const std::shared_ptr<MemoryHeap<KeyTD>>& key_allocator,
-                const std::shared_ptr<MemoryHeap<ValueT>>& value_allocator,
+                const std::shared_ptr<SlabListAlloc>& slab_list_allocator,
+                const std::shared_ptr<MemoryAlloc<KeyTD>>& key_allocator,
+                const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
                 uint32_t device_idx);
 
     ~SlabHash();

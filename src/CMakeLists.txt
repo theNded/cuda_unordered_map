@@ -1,6 +1,6 @@
 set(CUHFILES
-        slab_hash/config.h
-		slab_hash/instantiate.cuh)
+        memory_alloc/config.h
+        )
 
 cuda_add_library(slab_hash STATIC
 	${CUHFILES}

@@ -23,7 +23,7 @@
 #include <random>
 #include <thread>
 #include <vector>
-#include "gpu_hash_table.cuh"
+#include "coordinate_hash_map.cuh"
 
 //=======================================
 #define DEVICE_ID 0

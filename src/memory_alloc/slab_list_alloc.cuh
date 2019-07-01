@@ -18,7 +18,8 @@
 
 #include <stdint.h>
 #include <iostream>
-#include "helper/helper_cuda.h"
+#include "config.h"
+#include "helper_cuda.h"
 
 using SlabAllocAddressT = uint32_t;
 
@@ -29,9 +30,9 @@ using SlabAllocAddressT = uint32_t;
 template <uint32_t LOG_NUM_MEM_BLOCKS_,
           uint32_t NUM_SUPER_BLOCKS_ALLOCATOR_,
           uint32_t MEM_UNIT_WARP_MULTIPLES_ = 1>
-class SlabAllocLightContext {
+class SlabAllocContext {
 public:
-    // fixed parameters for the SlabAllocLight
+    // fixed parameters for the SlabAlloc
     static constexpr uint32_t NUM_MEM_UNITS_PER_BLOCK_ = 1024;
     static constexpr uint32_t NUM_BITMAP_PER_MEM_BLOCK_ = 32;
     static constexpr uint32_t BITMAP_SIZE_ = 32;
@@ -52,7 +53,7 @@ public:
             (BITMAP_SIZE_ * NUM_MEM_BLOCKS_PER_SUPER_BLOCK_);
     static constexpr uint32_t num_super_blocks_ = NUM_SUPER_BLOCKS_ALLOCATOR_;
 
-    SlabAllocLightContext()
+    SlabAllocContext()
         : d_super_blocks_(nullptr),
           hash_coef_(0),
           num_attempts_(0),
@@ -60,7 +61,7 @@ public:
           super_block_index_(0),
           allocated_index_(0) {}
 
-    SlabAllocLightContext& operator=(const SlabAllocLightContext& rhs) {
+    SlabAllocContext& operator=(const SlabAllocContext& rhs) {
         d_super_blocks_ = rhs.d_super_blocks_;
         hash_coef_ = rhs.hash_coef_;
         num_attempts_ = 0;
@@ -70,7 +71,7 @@ public:
         return *this;
     }
 
-    ~SlabAllocLightContext() {}
+    ~SlabAllocContext() {}
 
     void Init(uint32_t* d_super_block, uint32_t hash_coef) {
         d_super_blocks_ = d_super_block;
@@ -332,7 +333,7 @@ private:
 template <uint32_t LOG_NUM_MEM_BLOCKS_,
           uint32_t NUM_SUPER_BLOCKS_ALLOCATOR_,
           uint32_t MEM_UNIT_WARP_MULTIPLES_ = 1>
-class SlabAllocLight {
+class SlabAlloc {
 private:
     // a pointer to each super-block
     uint32_t* d_super_blocks_;
@@ -341,16 +342,16 @@ private:
     uint32_t hash_coef_;  // a random 32-bit
 
     // the context class is actually copied shallowly into GPU device
-    SlabAllocLightContext<LOG_NUM_MEM_BLOCKS_,
-                          NUM_SUPER_BLOCKS_ALLOCATOR_,
-                          MEM_UNIT_WARP_MULTIPLES_>
+    SlabAllocContext<LOG_NUM_MEM_BLOCKS_,
+                     NUM_SUPER_BLOCKS_ALLOCATOR_,
+                     MEM_UNIT_WARP_MULTIPLES_>
             slab_alloc_context_;
 
 public:
     // =========
     // constructor:
     // =========
-    SlabAllocLight() : d_super_blocks_(nullptr), hash_coef_(0) {
+    SlabAlloc() : d_super_blocks_(nullptr), hash_coef_(0) {
         // random coefficients for allocator's hash function
         std::mt19937 rng(time(0));
         hash_coef_ = rng();
@@ -391,14 +392,14 @@ public:
     // =========
     // destructor:
     // =========
-    ~SlabAllocLight() { CHECK_CUDA(cudaFree(d_super_blocks_)); }
+    ~SlabAlloc() { CHECK_CUDA(cudaFree(d_super_blocks_)); }
 
     // =========
     // Helper member functions:
     // =========
-    SlabAllocLightContext<LOG_NUM_MEM_BLOCKS_,
-                          NUM_SUPER_BLOCKS_ALLOCATOR_,
-                          MEM_UNIT_WARP_MULTIPLES_>*
+    SlabAllocContext<LOG_NUM_MEM_BLOCKS_,
+                     NUM_SUPER_BLOCKS_ALLOCATOR_,
+                     MEM_UNIT_WARP_MULTIPLES_>*
     getContextPtr() {
         return &slab_alloc_context_;
     }
@@ -412,14 +413,14 @@ constexpr uint32_t num_super_blocks = 32;
 constexpr uint32_t num_replicas = 1;
 }  // namespace slab_alloc_par
 
-using SlabListAllocator = SlabAllocLight<slab_alloc_par::log_num_mem_blocks,
-                                         slab_alloc_par::num_super_blocks,
-                                         slab_alloc_par::num_replicas>;
+using SlabListAlloc = SlabAlloc<slab_alloc_par::log_num_mem_blocks,
+                                slab_alloc_par::num_super_blocks,
+                                slab_alloc_par::num_replicas>;
 
-using SlabListAllocatorContext =
-        SlabAllocLightContext<slab_alloc_par::log_num_mem_blocks,
-                              slab_alloc_par::num_super_blocks,
-                              slab_alloc_par::num_replicas>;
+using SlabListAllocContext =
+        SlabAllocContext<slab_alloc_par::log_num_mem_blocks,
+                         slab_alloc_par::num_super_blocks,
+                         slab_alloc_par::num_replicas>;
 
 using SlabAddressT = uint32_t;
 

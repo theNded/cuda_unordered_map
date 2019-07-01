@@ -18,7 +18,7 @@
 
 #define CUDA_DEBUG_ENABLE_ASSERTION
 template <typename T>
-class MemoryHeapContext {
+class MemoryAllocContext {
 public:
     T *data_;           /* [N] */
     int *heap_;         /* [N] */
@@ -48,56 +48,25 @@ public:
      *  1                   1 <-                 1                    0 <- |
      *  0 <- heap_counter   0                    0                    0
      */
-    __device__ int Malloc() {
-        int index = atomicAdd(heap_counter_, 1);
-#ifdef CUDA_DEBUG_ENABLE_ASSERTION
-        assert(index < max_capacity_);
-#endif
-        return heap_[index];
-    }
-
-    __device__ void Free(size_t addr) {
-        int index = atomicSub(heap_counter_, 1);
-#ifdef CUDA_DEBUG_ENABLE_ASSERTION
-        assert(index >= 1);
-#endif
-        heap_[index - 1] = (int)addr;
-    }
-
-    __device__ int &internal_addr_at(size_t index) {
-#ifdef CUDA_DEBUG_ENABLE_ASSERTION
-        assert(index < max_capacity_);
-#endif
-        return heap_[index];
-    }
-
-    __device__ T &value_at(size_t addr) {
-#ifdef CUDA_DEBUG_ENABLE_ASSERTION
-        assert(addr < max_capacity_);
-#endif
-        return data_[addr];
-    }
-
-    __device__ const T &value_at(size_t addr) const {
-#ifdef CUDA_DEBUG_ENABLE_ASSERTION
-        assert(addr < max_capacity_);
-#endif
-        return data_[addr];
-    }
+    __device__ int Malloc();
+    __device__ void Free(size_t addr);
+    __device__ int &internal_addr_at(size_t index);
+    __device__ T &value_at(size_t addr);
+    __device__ const T &value_at(size_t addr) const;
 };
 
 template <typename T>
-class MemoryHeap {
+class MemoryAlloc {
 public:
     int heap_counter();
 
 public:
     int max_capacity_;
-    MemoryHeapContext<T> gpu_context_;
+    MemoryAllocContext<T> gpu_context_;
 
 public:
-    MemoryHeap(int max_capacity);
-    ~MemoryHeap();
+    MemoryAlloc(int max_capacity);
+    ~MemoryAlloc();
 
     /* Hopefully this is only used for debugging. */
     std::vector<int> DownloadHeap();

@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "slab_alloc/slab_alloc.cuh"
+#include <cstdint>
 
 /** Built-in flags **/
 static constexpr uint32_t BASE_UNIT_SIZE = 32;

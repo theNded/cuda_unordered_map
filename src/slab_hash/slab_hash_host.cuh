@@ -17,13 +17,14 @@
 #pragma once
 
 #include "slab_hash.h"
+#include "slab_hash_kernel.cuh"
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 SlabHash<KeyT, D, ValueT, HashFunc>::SlabHash(
         const uint32_t num_buckets,
-        const std::shared_ptr<SlabListAllocator>& slab_list_allocator,
-        const std::shared_ptr<MemoryHeap<KeyTD>>& key_allocator,
-        const std::shared_ptr<MemoryHeap<ValueT>>& value_allocator,
+        const std::shared_ptr<SlabListAlloc>& slab_list_allocator,
+        const std::shared_ptr<MemoryAlloc<KeyTD>>& key_allocator,
+        const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
         uint32_t device_idx)
     : num_buckets_(num_buckets),
       slab_list_allocator_(slab_list_allocator),
@@ -61,8 +62,8 @@ SlabHash<KeyT, D, ValueT, HashFunc>::~SlabHash() {
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 void SlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* d_key,
-                                                    ValueT* d_value,
-                                                    uint32_t num_keys) {
+                                                 ValueT* d_value,
+                                                 uint32_t num_keys) {
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     // calling the kernel for bulk build:
     CHECK_CUDA(cudaSetDevice(device_idx_));
@@ -72,8 +73,8 @@ void SlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* d_key,
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 void SlabHash<KeyT, D, ValueT, HashFunc>::Search(KeyTD* d_query,
-                                                    ValueT* d_result,
-                                                    uint32_t num_queries) {
+                                                 ValueT* d_result,
+                                                 uint32_t num_queries) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_queries + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     SearchKernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
@@ -82,7 +83,7 @@ void SlabHash<KeyT, D, ValueT, HashFunc>::Search(KeyTD* d_query,
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 void SlabHash<KeyT, D, ValueT, HashFunc>::Delete(KeyTD* d_key,
-                                                    uint32_t num_keys) {
+                                                 uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     DeleteKernel<KeyT, D, ValueT, HashFunc>

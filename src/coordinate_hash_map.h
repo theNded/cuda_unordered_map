@@ -18,8 +18,7 @@
 
 #pragma once
 
-#include "memory_heap/memory_heap_host.cuh"
-#include "slab_hash/instantiate.cuh"
+#include "slab_hash/slab_hash.h"
 
 /* Lightweight wrapper to handle host input */
 /* KeyT a elementary types: int, long, etc. */
@@ -53,8 +52,8 @@ private:
     KeyTD* query_key_buffer_;
     ValueT* query_result_buffer_;
 
-    std::shared_ptr<MemoryHeap<KeyTD>> key_allocator_;
-    std::shared_ptr<MemoryHeap<ValueT>> value_allocator_;
-    std::shared_ptr<SlabListAllocator> slab_list_allocator_;
+    std::shared_ptr<MemoryAlloc<KeyTD>> key_allocator_;
+    std::shared_ptr<MemoryAlloc<ValueT>> value_allocator_;
+    std::shared_ptr<SlabListAlloc> slab_list_allocator_;
     std::shared_ptr<SlabHash<KeyT, D, ValueT, HashFunc>> slab_hash_;
 };
