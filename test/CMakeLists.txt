@@ -9,3 +9,4 @@
 cuda_add_executable(uint7_delete uint7_delete.cu OPTIONS ${GENCODE})
 cuda_add_executable(uint7_multi_batch uint7_multi_batch.cu OPTIONS ${GENCODE})
 cuda_add_executable(uint7_conflicts uint7_conflicts.cu OPTIONS ${GENCODE})
+cuda_add_executable(kernel kernel.cu)

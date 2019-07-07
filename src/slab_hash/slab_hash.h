@@ -35,56 +35,48 @@ public:
 
 public:
     SlabHashContext();
-    static size_t SlabUnitSize();
-
-    /** Initializer **/
-    __host__ void Init(const uint32_t num_buckets,
-                       int8_t* d_table,
+    __host__ void Init(int8_t* d_table,
+                       const uint32_t num_buckets,
                        const SlabAllocContext& allocator_ctx,
                        const MemoryAllocContext<KeyTD>& key_allocator_ctx,
                        const MemoryAllocContext<ValueT>& value_allocator_ctx);
 
-    /** Core SIMT operations **/
-    __device__ void InsertPair(bool& to_be_inserted,
-                               const uint32_t& lane_id,
-                               const KeyTD& myKey,
-                               const ValueT& myValue,
-                               const uint32_t bucket_id);
-    __device__ void Search(bool& to_be_searched,
-                           const uint32_t& lane_id,
-                           const KeyTD& myKey,
-                           ValueT& myValue,
-                           bool& found,
-                           const uint32_t bucket_id);
-    __device__ void Delete(bool& to_be_deleted,
-                           const uint32_t& lane_id,
-                           const KeyTD& myKey,
-                           const uint32_t bucket_id);
+    /* Core SIMT operations */
+    __device__ void InsertPair(bool& lane_active,
+                               const uint32_t lane_id,
+                               const uint32_t bucket_id,
+                               const KeyTD& key,
+                               const ValueT& value);
 
-    /** Hash function **/
+    __device__ void Search(bool& lane_active,
+                           const uint32_t lane_id,
+                           const uint32_t bucket_id,
+                           const KeyTD& key,
+                           ValueT& value,
+                           uint8_t& found);
+
+    __device__ void Delete(bool& lane_active,
+                           const uint32_t lane_id,
+                           const uint32_t bucket_id,
+                           const KeyTD& key);
+
+    /* Hash function */
     __device__ __host__ __forceinline__ uint32_t
     ComputeBucket(const KeyTD& key) const;
 
-    __device__ __forceinline__ int32_t laneFoundKeyInWarp(const KeyTD& src_key,
-                                                          uint32_t lane_id,
-                                                          uint32_t unit_data);
-
-    __device__ __forceinline__ int32_t
-    laneEmptyKeyInWarp(const uint32_t unit_data);
+    __device__ __forceinline__ int32_t WarpFindKey(const KeyTD& src_key,
+                                                   const uint32_t lane_id,
+                                                   const uint32_t unit_data);
+    __device__ __forceinline__ int32_t WarpFindEmpty(const uint32_t unit_data);
 
     __device__ __host__ __forceinline__ SlabAllocContext& getAllocatorContext();
-    __device__ __host__ __forceinline__ ConcurrentSlab* getDeviceTablePointer();
     __device__ __forceinline__ uint32_t* getPointerFromSlab(
             const addr_t& slab_address, const uint32_t lane_id);
     __device__ __forceinline__ uint32_t* getPointerFromBucket(
             const uint32_t bucket_id, const uint32_t lane_id);
 
 private:
-    // this function should be operated in a warp-wide fashion
-    // TODO: add required asserts to make sure this is true in tests/debugs
-    __device__ __forceinline__ addr_t AllocateSlab(const uint32_t& lane_id);
-
-    // a thread-wide function to free the slab that was just allocated
+    __device__ __forceinline__ addr_t AllocateSlab(const uint32_t lane_id);
     __device__ __forceinline__ void FreeSlab(const addr_t slab_ptr);
 
 private:
@@ -113,7 +105,6 @@ private:
 
     // a raw pointer to the initial allocated memory for all buckets
     int8_t* d_table_;
-    size_t slab_unit_size_;
 
     SlabHashContext<KeyT, D, ValueT, HashFunc> gpu_context_;
     std::shared_ptr<MemoryAlloc<KeyTD>> key_allocator_;
@@ -132,13 +123,12 @@ public:
     ~SlabHash();
 
     // returns some debug information about the slab hash
-    std::string to_string();
     double ComputeLoadFactor(int flag);
 
-    void Insert(KeyTD* d_key, ValueT* d_value, uint32_t num_keys);
-    void Search(KeyTD* d_query,
-                ValueT* d_value,
-                uint8_t* d_result,
+    void Insert(KeyTD* keys, ValueT* values, uint32_t num_keys);
+    void Search(KeyTD* keys,
+                ValueT* values,
+                uint8_t* founds,
                 uint32_t num_queries);
-    void Delete(KeyTD* d_key, uint32_t num_keys);
+    void Delete(KeyTD* keys, uint32_t num_keys);
 };

@@ -22,11 +22,11 @@
 //=== Individual search kernel:
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __global__ void SearchKernel(
-        Coordinate<KeyT, D>* d_queries,
-        ValueT* d_results,
-        uint8_t* d_found,
-        uint32_t num_queries,
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx,
+        Coordinate<KeyT, D>* keys,
+        ValueT* values,
+        uint8_t* founds,
+        uint32_t num_queries) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -36,34 +36,34 @@ __global__ void SearchKernel(
     }
 
     /* Initialize the memory allocator on each warp */
-    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
+    slab_hash_ctx.getAllocatorContext().initAllocator(tid, lane_id);
 
-    Coordinate<KeyT, D> myQuery;
-    ValueT myResult;
-    bool found = false;
-    uint32_t myBucket = 0;
-    bool to_search = false;
+    bool lane_active = false;
+    uint32_t bucket_id = 0;
+    Coordinate<KeyT, D> key;
+    ValueT value;
+    uint8_t found;
+
     if (tid < num_queries) {
-        myQuery = d_queries[tid];
-        myBucket = slab_hash.ComputeBucket(myQuery);
-        to_search = true;
+        lane_active = true;
+        key = keys[tid];
+        bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    slab_hash.Search(to_search, lane_id, myQuery, myResult, found, myBucket);
+    slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key, value, found);
 
-    // writing back the results:
     if (tid < num_queries) {
-        d_results[tid] = myResult;
-        d_found[tid] = found ? 1 : 0;
+        values[tid] = value;
+        founds[tid] = found;
     }
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __global__ void InsertKernel(
-        Coordinate<KeyT, D>* d_key,
-        ValueT* d_value,
-        uint32_t num_keys,
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx,
+        Coordinate<KeyT, D>* keys,
+        ValueT* values,
+        uint32_t num_keys) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -71,27 +71,28 @@ __global__ void InsertKernel(
         return;
     }
 
-    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
+    slab_hash_ctx.getAllocatorContext().initAllocator(tid, lane_id);
 
-    Coordinate<KeyT, D> myKey;
-    ValueT myValue = 0;
-    uint32_t myBucket = 0;
-    bool to_insert = false;
+    bool lane_active = false;
+    uint32_t bucket_id = 0;
+    Coordinate<KeyT, D> key;
+    ValueT value;
+
     if (tid < num_keys) {
-        myKey = d_key[tid];
-        myValue = d_value[tid];
-        myBucket = slab_hash.ComputeBucket(myKey);
-        to_insert = true;
+        lane_active = true;
+        key = keys[tid];
+        value = values[tid];
+        bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    slab_hash.InsertPair(to_insert, lane_id, myKey, myValue, myBucket);
+    slab_hash_ctx.InsertPair(lane_active, lane_id, bucket_id, key, value);
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __global__ void DeleteKernel(
-        Coordinate<KeyT, D>* d_key_deleted,
-        uint32_t num_keys,
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx,
+        Coordinate<KeyT, D>* keys,
+        uint32_t num_keys) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
@@ -99,21 +100,19 @@ __global__ void DeleteKernel(
         return;
     }
 
-    // initializing the memory allocator:
-    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
+    slab_hash_ctx.getAllocatorContext().initAllocator(tid, lane_id);
 
-    Coordinate<KeyT, D> myKey;
-    uint32_t myBucket = 0;
-    bool to_delete = false;
+    bool lane_active = false;
+    uint32_t bucket_id = 0;
+    Coordinate<KeyT, D> key;
 
     if (tid < num_keys) {
-        myKey = d_key_deleted[tid];
-        myBucket = slab_hash.ComputeBucket(myKey);
-        to_delete = true;
+        lane_active = true;
+        key = keys[tid];
+        bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    // delete the keys:
-    slab_hash.Delete(to_delete, lane_id, myKey, myBucket);
+    slab_hash_ctx.Delete(lane_active, lane_id, bucket_id, key);
 }
 
 /*
@@ -122,7 +121,7 @@ __global__ void DeleteKernel(
  */
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __global__ void bucket_count_kernel(
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash,
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx,
         uint32_t* d_count_result,
         uint32_t num_buckets) {
     // global warp ID
@@ -136,18 +135,18 @@ __global__ void bucket_count_kernel(
     uint32_t lane_id = threadIdx.x & 0x1F;
 
     // initializing the memory allocator on each warp:
-    slab_hash.getAllocatorContext().initAllocator(tid, lane_id);
+    slab_hash_ctx.getAllocatorContext().initAllocator(tid, lane_id);
 
     uint32_t count = 0;
 
-    uint32_t src_unit_data = *slab_hash.getPointerFromBucket(wid, lane_id);
+    uint32_t src_unit_data = *slab_hash_ctx.getPointerFromBucket(wid, lane_id);
 
     count += __popc(
             __ballot_sync(REGULAR_NODE_KEY_MASK, src_unit_data != EMPTY_KEY));
     uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
 
     while (next != EMPTY_SLAB_POINTER) {
-        src_unit_data = *slab_hash.getPointerFromSlab(next, lane_id);
+        src_unit_data = *slab_hash_ctx.getPointerFromSlab(next, lane_id);
         count += __popc(__ballot_sync(REGULAR_NODE_KEY_MASK,
                                       src_unit_data != EMPTY_KEY));
         next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
@@ -159,27 +158,28 @@ __global__ void bucket_count_kernel(
 }
 
 /*
- * This kernel goes through all allocated bitmaps for a slab_hash's allocator
- * and store number of allocated slabs.
+ * This kernel goes through all allocated bitmaps for a slab_hash_ctx's
+ * allocator and store number of allocated slabs.
  * TODO: this should be moved into allocator's codebase (violation of layers)
  */
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
 __global__ void compute_stats_allocators(
         uint32_t* d_count_super_block,
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash) {
+        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
-    int num_bitmaps =
-            slab_hash.getAllocatorContext().NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
-            32;
+    int num_bitmaps = slab_hash_ctx.getAllocatorContext()
+                              .NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
+                      32;
     if (tid >= num_bitmaps) {
         return;
     }
 
-    for (int i = 0; i < slab_hash.getAllocatorContext().num_super_blocks_;
+    for (int i = 0; i < slab_hash_ctx.getAllocatorContext().num_super_blocks_;
          i++) {
         uint32_t read_bitmap =
-                *(slab_hash.getAllocatorContext().getPointerForBitmap(i, tid));
+                *(slab_hash_ctx.getAllocatorContext().getPointerForBitmap(i,
+                                                                          tid));
         atomicAdd(&d_count_super_block[i], __popc(read_bitmap));
     }
 }

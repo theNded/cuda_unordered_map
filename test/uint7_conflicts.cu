@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
     printf("Device: %s\n", devProp.name);
 
     /******** Hash table meta data ********/
-    uint32_t num_elems = 1 << 20;
+    uint32_t num_elems = 1 << 11;
     float expected_chain = 0.8f;
     uint32_t num_elems_per_bucket = 15;
     uint32_t expected_elems_per_bucket = expected_chain * num_elems_per_bucket;

@@ -105,7 +105,6 @@ public:
     __device__ void initAllocator(uint32_t& tid, uint32_t& lane_id);
 
     __device__ uint32_t warpAllocate(const uint32_t& lane_id);
-    __device__ uint32_t warpAllocateBulk(uint32_t& lane_id, const uint32_t k);
 
 
     // This function, frees a recently allocated memory unit by a single thread.

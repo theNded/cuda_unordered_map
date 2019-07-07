@@ -31,8 +31,7 @@ SlabHash<KeyT, D, ValueT, HashFunc>::SlabHash(
       key_allocator_(key_allocator),
       value_allocator_(value_allocator),
       device_idx_(device_idx),
-      d_table_(nullptr),
-      slab_unit_size_(0) {
+      d_table_(nullptr) {
     assert(slab_list_allocator && key_allocator &&
            "No proper dynamic allocator attached to the slab hash.");
 
@@ -42,15 +41,13 @@ SlabHash<KeyT, D, ValueT, HashFunc>::SlabHash(
 
     CHECK_CUDA(cudaSetDevice(device_idx_));
 
-    // initializing the gpu_context_:
-    slab_unit_size_ = gpu_context_.SlabUnitSize();
 
     // allocating initial buckets:
-    CHECK_CUDA(cudaMalloc(&d_table_, slab_unit_size_ * num_buckets_));
-    CHECK_CUDA(cudaMemset(d_table_, 0xFF, slab_unit_size_ * num_buckets_));
+    CHECK_CUDA(cudaMalloc(&d_table_, sizeof(ConcurrentSlab) * num_buckets_));
+    CHECK_CUDA(cudaMemset(d_table_, 0xFF, sizeof(ConcurrentSlab) * num_buckets_));
 
     gpu_context_.Init(
-            num_buckets_, d_table_, slab_list_allocator_->getContext(),
+            d_table_, num_buckets_, slab_list_allocator_->getContext(),
             key_allocator_->gpu_context_, value_allocator_->gpu_context_);
 }
 
@@ -61,48 +58,34 @@ SlabHash<KeyT, D, ValueT, HashFunc>::~SlabHash() {
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void SlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* d_key,
-                                                 ValueT* d_value,
+void SlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* keys,
+                                                 ValueT* values,
                                                  uint32_t num_keys) {
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     // calling the kernel for bulk build:
     CHECK_CUDA(cudaSetDevice(device_idx_));
     InsertKernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
-            d_key, d_value, num_keys, gpu_context_);
+            gpu_context_, keys, values, num_keys);
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void SlabHash<KeyT, D, ValueT, HashFunc>::Search(KeyTD* d_query,
-                                                 ValueT* d_result,
-                                                 uint8_t *d_found,
+void SlabHash<KeyT, D, ValueT, HashFunc>::Search(KeyTD* keys,
+                                                 ValueT* values,
+                                                 uint8_t* founds,
                                                  uint32_t num_queries) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_queries + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     SearchKernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
-            d_query, d_result, d_found, num_queries, gpu_context_);
+            gpu_context_, keys, values, founds, num_queries);
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void SlabHash<KeyT, D, ValueT, HashFunc>::Delete(KeyTD* d_key,
+void SlabHash<KeyT, D, ValueT, HashFunc>::Delete(KeyTD* keys,
                                                  uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     DeleteKernel<KeyT, D, ValueT, HashFunc>
-            <<<num_blocks, BLOCKSIZE_>>>(d_key, num_keys, gpu_context_);
-}
-
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-std::string SlabHash<KeyT, D, ValueT, HashFunc>::to_string() {
-    std::string result;
-    result += " ==== SlabHash: \n";
-    result += "\t Running on device \t\t " + std::to_string(device_idx_) + "\n";
-    result +=
-            "\t Number of buckets:\t\t " + std::to_string(num_buckets_) + "\n";
-    result += "\t d_table_ address: \t\t " +
-              std::to_string(reinterpret_cast<uint64_t>(
-                      static_cast<void*>(d_table_))) +
-              "\n";
-    return result;
+            <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, num_keys);
 }
 
 template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
