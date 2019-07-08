@@ -92,11 +92,11 @@ public:
 
     /** Return a pair:
         @DataTupleCPU insertion: subset of query, only the 'hit' part
-        @DataTupleCPU query: all the possible queries, including 'hit' and
-       'miss'
+        @DataTupleCPU query, query_gt: all the possible queries, including 'hit'
+       and 'miss'
        **/
-    std::pair<DataTupleCPU, DataTupleCPU> GenerateData(uint32_t num_queries,
-                                                       float existing_ratio) {
+    std::tuple<DataTupleCPU, DataTupleCPU, DataTupleCPU> GenerateData(
+            uint32_t num_queries, float existing_ratio) {
         uint32_t num_hit_queries =
                 static_cast<uint32_t>(num_queries * existing_ratio);
         assert(num_queries <= keys_pool_size_ &&
@@ -104,39 +104,42 @@ public:
         assert(num_hit_queries <= hit_keys_pool_size_ &&
                "num_hit_queries > hit_keys_pool_size_, abort");
 
-        DataTupleCPU insert_data, query_data;
-        query_data.keys.resize(num_queries);
-        query_data.values.resize(num_queries);
-        query_data.masks.resize(num_queries);
+        DataTupleCPU insert_data, query_data_gt;
+        query_data_gt.Resize(num_queries);
 
         int i = 0;
         for (; i < num_hit_queries; i++) {
-            query_data.keys[i] = keys_pool_[i];
-            query_data.values[i] = values_pool_[i];
-            query_data.masks[i] = 1;
+            query_data_gt.keys[i] = keys_pool_[i];
+            query_data_gt.values[i] = values_pool_[i];
+            query_data_gt.masks[i] = 1;
         }
         for (; i < num_queries; ++i) {
-            query_data.keys[i] = keys_pool_[i];
-            query_data.values[i] = 0;
-            query_data.masks[i] = 0;
+            query_data_gt.keys[i] = keys_pool_[i];
+            query_data_gt.values[i] = 0;
+            query_data_gt.masks[i] = 0;
         }
 
         /* insertion */
-        insert_data.keys =
-                std::vector<KeyTD>(query_data.keys.begin(),
-                                   query_data.keys.begin() + num_hit_queries);
+        insert_data.keys = std::vector<KeyTD>(
+                query_data_gt.keys.begin(),
+                query_data_gt.keys.begin() + num_hit_queries);
         insert_data.values = std::vector<ValueT>(
-                query_data.values.begin(),
-                query_data.values.begin() + num_hit_queries);
+                query_data_gt.values.begin(),
+                query_data_gt.values.begin() + num_hit_queries);
         insert_data.masks = std::vector<uint8_t>(
-                query_data.masks.begin(),
-                query_data.masks.begin() + num_hit_queries);
+                query_data_gt.masks.begin(),
+                query_data_gt.masks.begin() + num_hit_queries);
 
         /* shuffled queries */
         insert_data.Shuffle(seed_);
-        query_data.Shuffle(seed_);
+        query_data_gt.Shuffle(seed_);
 
-        return std::make_pair(std::move(insert_data), std::move(query_data));
+        DataTupleCPU query_data;
+        query_data.Resize(num_queries);
+        query_data.keys = query_data_gt.keys;
+
+        return std::make_tuple(std::move(insert_data), std::move(query_data),
+                               std::move(query_data_gt));
     }
 
     static bool CheckQueryResult(const std::vector<uint32_t> &values,
@@ -180,23 +183,23 @@ int TestInsert(TestDataHelperCPU &data_generator) {
     CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
-    auto insert_query_data_pair = data_generator.GenerateData(
+    auto insert_query_data_tuple = data_generator.GenerateData(
             data_generator.keys_pool_size_ / 2, 0.4f);
 
-    auto &insert_data = insert_query_data_pair.first;
+    auto &insert_data = std::get<0>(insert_query_data_tuple);
     time = hash_table.Insert(insert_data.keys, insert_data.values);
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
-    auto &query_data_gt = insert_query_data_pair.second;
-    auto query_values = std::vector<ValueT>(query_data_gt.keys.size());
-    auto query_masks = std::vector<uint8_t>(query_data_gt.keys.size());
-    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
+    auto &query_data = std::get<1>(insert_query_data_tuple);
+    auto &query_data_gt = std::get<2>(insert_query_data_tuple);
+    time = hash_table.Search(query_data.keys, query_data.values,
+                             query_data.masks);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
-           double(query_data_gt.keys.size()) / (time * 1000.0));
+           double(query_data.keys.size()) / (time * 1000.0));
     bool query_correct = data_generator.CheckQueryResult(
-            query_values, query_masks, query_data_gt.values,
+            query_data.values, query_data.masks, query_data_gt.values,
             query_data_gt.masks);
     if (!query_correct) return -1;
 
@@ -208,41 +211,42 @@ int TestDelete(TestDataHelperCPU &data_generator) {
     CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
-    auto insert_query_data_pair = data_generator.GenerateData(
+    auto insert_query_data_tuple = data_generator.GenerateData(
             data_generator.keys_pool_size_ / 2, 1.0f);
 
-    auto &insert_data = insert_query_data_pair.first;
+    auto &insert_data = std::get<0>(insert_query_data_tuple);
     time = hash_table.Insert(insert_data.keys, insert_data.values);
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
-    auto &query_data_gt = insert_query_data_pair.second;
-    auto query_values = std::vector<ValueT>(query_data_gt.keys.size());
-    auto query_masks = std::vector<uint8_t>(query_data_gt.keys.size());
-    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
+    auto &query_data = std::get<1>(insert_query_data_tuple);
+    auto &query_data_gt = std::get<2>(insert_query_data_tuple);
+    time = hash_table.Search(query_data.keys, query_data.values,
+                             query_data.masks);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
-           double(query_data_gt.keys.size()) / (time * 1000.0));
+           double(query_data.keys.size()) / (time * 1000.0));
     bool query_correct = data_generator.CheckQueryResult(
-            query_values, query_masks, query_data_gt.values,
+            query_data.values, query_data.masks, query_data_gt.values,
             query_data_gt.masks);
     if (!query_correct) return -1;
 
     /** Delete everything **/
-    time = hash_table.Delete(query_data_gt.keys);
+    time = hash_table.Delete(query_data.keys);
     printf("3) Hash table deleted in %.3f ms (%.3f M queries/s)\n", time,
-           double(query_data_gt.keys.size()) / (time * 1000.0));
+           double(query_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     auto query_masks_gt_after_deletion =
-            std::vector<uint8_t>(query_data_gt.keys.size());
+            std::vector<uint8_t>(query_data.keys.size());
     std::fill(query_masks_gt_after_deletion.begin(),
               query_masks_gt_after_deletion.end(), 0);
-    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
+    time = hash_table.Search(query_data.keys, query_data.values,
+                             query_data.masks);
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
     query_correct = data_generator.CheckQueryResult(
-            query_values, query_masks, query_data_gt.values,
+            query_data.values, query_data.masks, query_data_gt.values,
             query_masks_gt_after_deletion);
 
     if (!query_correct) return -1;
@@ -255,23 +259,23 @@ int TestConflict(TestDataHelperCPU &data_generator) {
     CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
-    auto insert_query_data_pair = data_generator.GenerateData(
+    auto insert_query_data_tuple = data_generator.GenerateData(
             data_generator.keys_pool_size_ / 2, 1.0f);
 
-    auto &insert_data = insert_query_data_pair.first;
+    auto &insert_data = std::get<0>(insert_query_data_tuple);
     time = hash_table.Insert(insert_data.keys, insert_data.values);
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
-    auto &query_data_gt = insert_query_data_pair.second;
-    auto query_values = std::vector<ValueT>(query_data_gt.keys.size());
-    auto query_masks = std::vector<uint8_t>(query_data_gt.keys.size());
-    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
+    auto &query_data = std::get<1>(insert_query_data_tuple);
+    auto &query_data_gt = std::get<2>(insert_query_data_tuple);
+    time = hash_table.Search(query_data.keys, query_data.values,
+                             query_data.masks);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
-           double(query_data_gt.keys.size()) / (time * 1000.0));
+           double(query_data.keys.size()) / (time * 1000.0));
     bool query_correct = data_generator.CheckQueryResult(
-            query_values, query_masks, query_data_gt.values,
+            query_data.values, query_data.masks, query_data_gt.values,
             query_data_gt.masks);
     if (!query_correct) return -1;
 
@@ -286,12 +290,13 @@ int TestConflict(TestDataHelperCPU &data_generator) {
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
-    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
+    time = hash_table.Search(query_data.keys, query_data.values,
+                             query_data.masks);
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
-    query_correct = data_generator.CheckQueryResult(query_values, query_masks,
-                                                    query_data_gt.values,
-                                                    query_data_gt.masks);
+    query_correct = data_generator.CheckQueryResult(
+            query_data.values, query_data.masks, query_data_gt.values,
+            query_data_gt.masks);
     if (!query_correct) return -1;
 
     return 0;

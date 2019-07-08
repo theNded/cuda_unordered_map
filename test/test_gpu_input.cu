@@ -397,7 +397,7 @@ int main() {
     assert(!TestDelete(data_generator) && "TestDelete failed.\n");
     printf("TestDelete passed.\n");
 
-    printf(">>> Test sequence: insert (all valid) -> query -> insert (all"
+    printf(">>> Test sequence: insert (all valid) -> query -> insert (all "
            "valid, duplicate) -> query\n");
     assert(!TestConflict(data_generator) && "TestConflict failed.\n");
     printf("TestConflict passed.\n");
