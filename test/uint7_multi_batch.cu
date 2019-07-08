@@ -105,8 +105,7 @@ int main(int argc, char** argv) {
     int num_insertions = num_elems / 2;
     printf("num elems: %d, num buckets: %d -- num insertions: %d\n", num_elems,
            num_buckets, num_insertions);
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(num_elems, num_buckets,
-                                                       0);
+    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(num_elems);
 
     /****** Insert and query first half ********/
     std::vector<KeyTD> key_1st_half(h_key.begin(), h_key.begin() + num_elems / 2);

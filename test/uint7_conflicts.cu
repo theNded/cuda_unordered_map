@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
     /******* Instantiate hash table ********/
     printf("num elems: %d, num buckets: %d -- num insertions: %d\n", num_elems,
            num_buckets, num_insertions);
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(num_elems, num_buckets, 0);
+    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(num_elems);
 
     /****** Insert and query ********/
     float build_time = 0;

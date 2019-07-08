@@ -107,8 +107,7 @@ int main(int argc, char** argv) {
     }
 
     /** Instantiate hash table **/
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(num_elements,
-                                                            num_buckets, 0);
+    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(num_elements);
 
     printf("0) num_keys = %d, num_buckets = %d\n", num_keys, num_buckets);
     float build_time = 0;
