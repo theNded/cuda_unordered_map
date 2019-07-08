@@ -184,7 +184,7 @@ int TestInsert(TestDataHelperCPU &data_generator) {
             data_generator.keys_pool_size_ / 2, 0.4f);
 
     auto &insert_data = insert_query_data_pair.first;
-    hash_table.Insert(insert_data.keys, insert_data.values, time);
+    time = hash_table.Insert(insert_data.keys, insert_data.values);
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
@@ -192,7 +192,7 @@ int TestInsert(TestDataHelperCPU &data_generator) {
     auto &query_data_gt = insert_query_data_pair.second;
     auto query_values = std::vector<ValueT>(query_data_gt.keys.size());
     auto query_masks = std::vector<uint8_t>(query_data_gt.keys.size());
-    hash_table.Search(query_data_gt.keys, query_values, query_masks, time);
+    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
     bool query_correct = data_generator.CheckQueryResult(
@@ -212,7 +212,7 @@ int TestDelete(TestDataHelperCPU &data_generator) {
             data_generator.keys_pool_size_ / 2, 1.0f);
 
     auto &insert_data = insert_query_data_pair.first;
-    hash_table.Insert(insert_data.keys, insert_data.values, time);
+    time = hash_table.Insert(insert_data.keys, insert_data.values);
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
@@ -220,7 +220,7 @@ int TestDelete(TestDataHelperCPU &data_generator) {
     auto &query_data_gt = insert_query_data_pair.second;
     auto query_values = std::vector<ValueT>(query_data_gt.keys.size());
     auto query_masks = std::vector<uint8_t>(query_data_gt.keys.size());
-    hash_table.Search(query_data_gt.keys, query_values, query_masks, time);
+    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
     bool query_correct = data_generator.CheckQueryResult(
@@ -229,7 +229,7 @@ int TestDelete(TestDataHelperCPU &data_generator) {
     if (!query_correct) return -1;
 
     /** Delete everything **/
-    hash_table.Delete(query_data_gt.keys, time);
+    time = hash_table.Delete(query_data_gt.keys);
     printf("3) Hash table deleted in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
@@ -238,7 +238,7 @@ int TestDelete(TestDataHelperCPU &data_generator) {
             std::vector<uint8_t>(query_data_gt.keys.size());
     std::fill(query_masks_gt_after_deletion.begin(),
               query_masks_gt_after_deletion.end(), 0);
-    hash_table.Search(query_data_gt.keys, query_values, query_masks, time);
+    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
     query_correct = data_generator.CheckQueryResult(
@@ -259,7 +259,7 @@ int TestConflict(TestDataHelperCPU &data_generator) {
             data_generator.keys_pool_size_ / 2, 1.0f);
 
     auto &insert_data = insert_query_data_pair.first;
-    hash_table.Insert(insert_data.keys, insert_data.values, time);
+    time = hash_table.Insert(insert_data.keys, insert_data.values);
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
@@ -267,7 +267,7 @@ int TestConflict(TestDataHelperCPU &data_generator) {
     auto &query_data_gt = insert_query_data_pair.second;
     auto query_values = std::vector<ValueT>(query_data_gt.keys.size());
     auto query_masks = std::vector<uint8_t>(query_data_gt.keys.size());
-    hash_table.Search(query_data_gt.keys, query_values, query_masks, time);
+    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
     bool query_correct = data_generator.CheckQueryResult(
@@ -281,12 +281,12 @@ int TestConflict(TestDataHelperCPU &data_generator) {
     for (auto &v : insert_values_duplicate) {
         v += 1;
     }
-    hash_table.Insert(insert_data.keys, insert_values_duplicate, time);
+    time = hash_table.Insert(insert_data.keys, insert_values_duplicate);
     printf("3) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
-    hash_table.Search(query_data_gt.keys, query_values, query_masks, time);
+    time = hash_table.Search(query_data_gt.keys, query_values, query_masks);
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
     query_correct = data_generator.CheckQueryResult(query_values, query_masks,

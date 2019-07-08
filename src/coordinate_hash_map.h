@@ -36,29 +36,27 @@ public:
                       const uint32_t device_idx = 0);
     ~CoordinateHashMap();
 
-    void Insert(const std::vector<KeyTD>& keys,
-                const std::vector<ValueT>& values,
-                float& time);
+    float Insert(const std::vector<KeyTD>& keys,
+                 const std::vector<ValueT>& values);
     /* query_values[i] is undefined (basically ValueT(0)) if mask[i] == 0 */
-    void Search(const std::vector<KeyTD>& query_keys,
-                std::vector<ValueT>& query_values,
-                std::vector<uint8_t>& mask,
-                float& time);
-    void Delete(const std::vector<KeyTD>& keys, float& time);
+    float Search(const std::vector<KeyTD>& query_keys,
+                 std::vector<ValueT>& query_values,
+                 std::vector<uint8_t>& mask);
+    float Delete(const std::vector<KeyTD>& keys);
 
     /* We assert all memory buffers are allocated prior to the function call
          @keys_device stores keys in KeyT[num_keys x D],
          @[query]_values_device stores keys in ValueT[num_keys] */
-    void Insert(KeyT* keys_device, ValueT* values_device, int num_keys);
-    void Search(KeyT* query_keys_device,
-                ValueT* query_values_device,
-                uint8_t* mask,
-                int num_keys);
-    void Delete(KeyT* keys, int num_keys);
+    float Insert(KeyT* keys_device, ValueT* values_device, int num_keys);
+    float Search(KeyT* query_keys_device,
+                 ValueT* query_values_device,
+                 uint8_t* mask,
+                 int num_keys);
+    float Delete(KeyT* keys, int num_keys);
 
     /* Similar to Insert, but we won't assign value for them;
      * it's more like 'reserve' */
-    void Allocate(const std::vector<KeyTD>& keys, float& time);
+    float Allocate(const std::vector<KeyTD>& keys);
 
     float ComputeLoadFactor(int flag = 0);
 
