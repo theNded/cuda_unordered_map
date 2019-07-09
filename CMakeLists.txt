@@ -68,7 +68,5 @@ if(SLABHASH_GENCODE_SM71)
   set(GENCODE ${GENCODE} ${GENCODE_SM71})
 endif(SLABHASH_GENCODE_SM71)
 
-include_directories(ThirdParty/rapidjson/include)
-
 include_directories(src)
 add_subdirectory(test)

@@ -20,9 +20,7 @@
 
 #include "coordinate_hash_map.h"
 
-/* Lightweight wrapper to handle host input */
-/* KeyT supports elementary types: int, long, etc. */
-/* ValueT supports arbitrary types in theory. */
+/** Mapping coordinates to indices, wrapped for MinkowskiEngine **/
 template <size_t D>
 class CoordinateIndexer {
 public:
