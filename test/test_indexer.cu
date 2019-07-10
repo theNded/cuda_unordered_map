@@ -25,7 +25,7 @@
 #include "coordinate_hash_map.cuh"
 #include "coordinate_indexer.cuh"
 
-using KeyT = uint32_t;
+using KeyT = int;
 constexpr size_t D = 7;
 using ValueT = uint32_t;
 using HashFunc = CoordinateHashFunc<KeyT, D>;

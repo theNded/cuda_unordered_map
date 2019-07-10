@@ -24,7 +24,7 @@
 template <size_t D>
 class CoordinateIndexer {
 public:
-    using KeyT = uint32_t;
+    using KeyT = int;
     using ValueT = uint32_t;
     using HashFunc = CoordinateHashFunc<KeyT, D>;
 
