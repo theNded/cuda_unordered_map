@@ -20,7 +20,19 @@
 #include <memory>
 
 #include "../memory_alloc/memory_alloc.h"
-#include "../memory_alloc/slab_list_alloc.h"
+#include "../memory_alloc/slab_alloc.h"
+
+/** Internal addresses managed by memory_alloc **/
+struct KeyValuePtrPair {
+    internal_ptr_t key;
+    internal_ptr_t value;
+};
+
+struct ConcurrentSlab {
+    // 15 x 2 + 2
+    KeyValuePtrPair data[15];
+    uint32_t ptr_index[2];
+};
 
 /*
  * This is the main class that will be shallowly copied into the device to be

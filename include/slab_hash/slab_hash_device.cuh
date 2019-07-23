@@ -16,8 +16,6 @@
 
 #pragma once
 
-#include "../memory_alloc/memory_alloc_device.cuh"
-#include "../memory_alloc/slab_list_alloc_ctx.cuh"
 #include "slab_hash.h"
 
 // fixed known parameters:
@@ -111,14 +109,14 @@ SlabHashContext<KeyT, ValueT, HashFunc>::getPointerFromBucket(
 template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ addr_t
 SlabHashContext<KeyT, ValueT, HashFunc>::AllocateSlab(const uint32_t lane_id) {
-    return slab_list_allocator_ctx_.warpAllocate(lane_id);
+    return slab_list_allocator_ctx_.WarpAllocate(lane_id);
 }
 
 // a thread-wide function to free the slab that was just allocated
 template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ void
 SlabHashContext<KeyT, ValueT, HashFunc>::FreeSlab(const addr_t slab_ptr) {
-    slab_list_allocator_ctx_.freeUntouched(slab_ptr);
+    slab_list_allocator_ctx_.FreeUntouched(slab_ptr);
 }
 
 //================================================

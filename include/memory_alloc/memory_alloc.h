@@ -15,46 +15,141 @@
  */
 
 #include <assert.h>
+#include "../helper_cuda.h"
 #include "config.h"
 
 #define CUDA_DEBUG_ENABLE_ASSERTION
 template <typename T>
 class MemoryAllocContext {
 public:
-    T *data_;           /* [N] */
-    addr_t *heap_;      /* [N] */
-    int *heap_counter_; /* [1] */
+    T *data_;              /* [N] */
+    internal_ptr_t *heap_; /* [N] */
+    int *heap_counter_;    /* [1] */
 
 public:
     int max_capacity_;
 
 public:
-    __device__ addr_t Allocate();
-    __device__ void Free(addr_t addr);
+    /**
+     * The @value array's size is FIXED.
+     * The @heap array stores the addresses of the values.
+     * Only the unallocated part is maintained.
+     * (ONLY care about the heap above the heap counter. Below is meaningless.)
+     * ---------------------------------------------------------------------
+     * heap  ---Malloc-->  heap  ---Malloc-->  heap  ---Free(0)-->  heap
+     * N-1                 N-1                  N-1                  N-1   |
+     *  .                   .                    .                    .    |
+     *  .                   .                    .                    .    |
+     *  .                   .                    .                    .    |
+     *  3                   3                    3                    3    |
+     *  2                   2                    2 <-                 2    |
+     *  1                   1 <-                 1                    0 <- |
+     *  0 <- heap_counter   0                    0                    0
+     */
 
-    __device__ inline T *data() { return data_; }
-    __device__ inline addr_t *heap() { return heap_; }
-    __device__ inline int *heap_counter() { return heap_counter_; }
+    __device__ addr_t Allocate() {
+        int index = atomicAdd(heap_counter_, 1);
+#ifdef CUDA_DEBUG_ENABLE_ASSERTION
+        assert(index < max_capacity_);
+#endif
+        return heap_[index];
+    }
 
-    __device__ addr_t &addr_on_heap(size_t index);
-    __device__ T &value_at(addr_t addr);
-    __device__ const T &value_at(addr_t addr) const;
+    __device__ void Free(addr_t addr) {
+        int index = atomicSub(heap_counter_, 1);
+#ifdef CUDA_DEBUG_ENABLE_ASSERTION
+        assert(index >= 1);
+#endif
+        heap_[index - 1] = addr;
+    }
+
+    __device__ addr_t &addr_on_heap(size_t index) {
+#ifdef CUDA_DEBUG_ENABLE_ASSERTION
+        assert(index < max_capacity_);
+#endif
+        return heap_[index];
+    }
+
+    __device__ T &value_at(addr_t addr) {
+#ifdef CUDA_DEBUG_ENABLE_ASSERTION
+        assert(addr < max_capacity_);
+#endif
+        return data_[addr];
+    }
+
+    __device__ const T &value_at(addr_t addr) const {
+#ifdef CUDA_DEBUG_ENABLE_ASSERTION
+        assert(addr < max_capacity_);
+#endif
+        return data_[addr];
+    }
 };
 
 template <typename T>
-class MemoryAlloc {
-public:
-    int heap_counter();
+__global__ void ResetMemoryAllocKernel(MemoryAllocContext<T> ctx) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < ctx.max_capacity_) {
+        ctx.value_at(i) = T(); /* This is not required. */
+        ctx.addr_on_heap(i) = i;
+    }
+}
 
+template <typename T>
+class MemoryAlloc {
 public:
     int max_capacity_;
     MemoryAllocContext<T> gpu_context_;
 
 public:
-    MemoryAlloc(int max_capacity);
-    ~MemoryAlloc();
+    MemoryAlloc(int max_capacity) {
+        max_capacity_ = max_capacity;
+        gpu_context_.max_capacity_ = max_capacity;
+        CHECK_CUDA(cudaMalloc(&(gpu_context_.heap_counter_), sizeof(int)));
+        CHECK_CUDA(
+                cudaMalloc(&(gpu_context_.heap_), sizeof(int) * max_capacity_));
+        CHECK_CUDA(
+                cudaMalloc(&(gpu_context_.data_), sizeof(T) * max_capacity_));
 
-    /* Hopefully this is only used for debugging. */
-    std::vector<int> DownloadHeap();
-    std::vector<T> DownloadValue();
+        const int blocks = (max_capacity_ + 128 - 1) / 128;
+        const int threads = 128;
+
+        ResetMemoryAllocKernel<<<blocks, threads>>>(gpu_context_);
+        CHECK_CUDA(cudaDeviceSynchronize());
+        CHECK_CUDA(cudaGetLastError());
+
+        int heap_counter = 0;
+        CHECK_CUDA(cudaMemcpy(gpu_context_.heap_counter_, &heap_counter,
+                              sizeof(int), cudaMemcpyHostToDevice));
+    }
+
+    ~MemoryAlloc() {
+        CHECK_CUDA(cudaFree(gpu_context_.heap_counter_));
+        CHECK_CUDA(cudaFree(gpu_context_.heap_));
+        CHECK_CUDA(cudaFree(gpu_context_.data_));
+    }
+
+    std::vector<int> DownloadHeap() {
+        std::vector<int> ret;
+        ret.resize(max_capacity_);
+        CHECK_CUDA(cudaMemcpy(ret.data(), gpu_context_.heap_,
+                              sizeof(int) * max_capacity_,
+                              cudaMemcpyDeviceToHost));
+        return ret;
+    }
+
+    std::vector<T> DownloadValue() {
+        std::vector<T> ret;
+        ret.resize(max_capacity_);
+        CHECK_CUDA(cudaMemcpy(ret.data(), gpu_context_.data_,
+                              sizeof(T) * max_capacity_,
+                              cudaMemcpyDeviceToHost));
+        return ret;
+    }
+
+    int heap_counter() {
+        int heap_counter;
+        CHECK_CUDA(cudaMemcpy(&heap_counter, gpu_context_.heap_counter_,
+                              sizeof(int), cudaMemcpyDeviceToHost));
+        return heap_counter;
+    }
 };

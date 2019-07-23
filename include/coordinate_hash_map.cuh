@@ -19,7 +19,6 @@
 #pragma once
 
 #include "coordinate_hash_map.h"
-#include "memory_alloc/memory_alloc_host.cuh"
 #include "slab_hash/slab_hash_host.cuh"
 
 template <typename KeyT, typename ValueT, typename HashFunc>

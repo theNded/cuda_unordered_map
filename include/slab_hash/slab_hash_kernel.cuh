@@ -177,9 +177,8 @@ __global__ void compute_stats_allocators(
 
     for (int i = 0; i < slab_hash_ctx.getAllocatorContext().num_super_blocks_;
          i++) {
-        uint32_t read_bitmap =
-                *(slab_hash_ctx.getAllocatorContext().getPointerForBitmap(i,
-                                                                          tid));
+        uint32_t read_bitmap = *(
+                slab_hash_ctx.getAllocatorContext().get_ptr_for_bitmap(i, tid));
         atomicAdd(&d_count_super_block[i], __popc(read_bitmap));
     }
 }
