@@ -23,7 +23,7 @@
 /* Lightweight wrapper to handle host input */
 /* KeyT supports elementary types: int, long, etc. */
 /* ValueT supports arbitrary types in theory. */
-template <typename KeyT, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc = hash<KeyT>>
 class CoordinateHashMap {
 public:
     CoordinateHashMap(uint32_t max_keys,

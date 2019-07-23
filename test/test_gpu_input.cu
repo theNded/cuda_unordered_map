@@ -23,7 +23,7 @@
 #include <random>
 #include <vector>
 #include "coordinate_hash_map.cuh"
-
+#include "coordinate.h"
 
 constexpr size_t D = 7;
 using KeyT = Coordinate<int32_t, D>;
@@ -237,7 +237,7 @@ public:
 
 int TestInsert(TestDataHelperGPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, ValueT, HashFunc> hash_table(
+    CoordinateHashMap<KeyT, ValueT> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(

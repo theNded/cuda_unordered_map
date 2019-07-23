@@ -17,7 +17,7 @@
 #pragma once
 
 #include "slab_hash.h"
-#include "slab_hash_ctx.cuh"
+#include "slab_hash_device.cuh"
 
 //=== Individual search kernel:
 template <typename KeyT, typename ValueT, typename HashFunc>

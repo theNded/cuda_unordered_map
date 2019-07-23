@@ -14,6 +14,9 @@ struct Coord {
 };
 
 int main() {
+    std::string stra = "asdasds";
+    std::string strb = "a";
+    std::cout << sizeof(stra) << " " << sizeof(strb) << "\n";
     thrust::device_vector<bool> b;
     b.push_back(true);
     b.push_back(false);

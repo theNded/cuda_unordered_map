@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "../memory_alloc/memory_alloc_ctx.cuh"
+#include "../memory_alloc/memory_alloc_device.cuh"
 #include "../memory_alloc/slab_list_alloc_ctx.cuh"
 #include "slab_hash.h"
 

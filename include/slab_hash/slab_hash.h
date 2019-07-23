@@ -21,13 +21,27 @@
 
 #include "../memory_alloc/memory_alloc.h"
 #include "../memory_alloc/slab_list_alloc.h"
-#include "coordinate.h"
 
 /*
  * This is the main class that will be shallowly copied into the device to be
  * used at runtime. This class does not own the allocated memory on the gpu
  * (i.e., d_table_)
  */
+
+template <typename Key>
+struct hash {
+    __device__ __host__ uint64_t operator()(const Key& key) const {
+        uint64_t hash = UINT64_C(14695981039346656037);
+
+        const int chunks = sizeof(Key) / sizeof(int);
+        for (size_t i = 0; i < chunks; ++i) {
+            hash ^= ((int32_t*)(&key))[i];
+            hash *= UINT64_C(1099511628211);
+        }
+        return hash;
+    }
+};
+
 template <typename KeyT, typename ValueT, typename HashFunc>
 class SlabHashContext {
 public:
@@ -95,12 +109,10 @@ private:
 template <typename KeyT, typename ValueT, typename HashFunc>
 class SlabHash {
 private:
-    // fixed known parameters:
     static constexpr uint32_t BLOCKSIZE_ = 128;
 
     uint32_t num_buckets_;
 
-    // a raw pointer to the initial allocated memory for all buckets
     int8_t* d_table_;
 
     SlabHashContext<KeyT, ValueT, HashFunc> gpu_context_;
@@ -119,7 +131,6 @@ public:
 
     ~SlabHash();
 
-    // returns some debug information about the slab hash
     double ComputeLoadFactor(int flag);
 
     void Insert(KeyT* keys, ValueT* values, uint32_t num_keys);
