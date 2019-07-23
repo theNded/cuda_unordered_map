@@ -180,7 +180,7 @@ public:
 
 int TestInsert(TestDataHelperCPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
+    CoordinateHashMap<KeyTD, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -208,7 +208,7 @@ int TestInsert(TestDataHelperCPU &data_generator) {
 
 int TestDelete(TestDataHelperCPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
+    CoordinateHashMap<KeyTD, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -256,7 +256,7 @@ int TestDelete(TestDataHelperCPU &data_generator) {
 
 int TestConflict(TestDataHelperCPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
+    CoordinateHashMap<KeyTD, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -305,7 +305,7 @@ int TestConflict(TestDataHelperCPU &data_generator) {
 int main() {
     const int key_value_pool_size = 1 << 20;
     const float existing_ratio = 0.6f;
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
+    CoordinateHashMap<KeyTD, ValueT, HashFunc> hash_table(
             key_value_pool_size);
 
     auto data_generator =

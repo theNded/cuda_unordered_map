@@ -23,11 +23,9 @@
 /* Lightweight wrapper to handle host input */
 /* KeyT supports elementary types: int, long, etc. */
 /* ValueT supports arbitrary types in theory. */
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 class CoordinateHashMap {
 public:
-    typedef Coordinate<KeyT, D> KeyTD;
-
     CoordinateHashMap(uint32_t max_keys,
                       /* Preset hash table params to estimate bucket num */
                       uint32_t keys_per_bucket = 15,
@@ -36,13 +34,13 @@ public:
                       const uint32_t device_idx = 0);
     ~CoordinateHashMap();
 
-    float Insert(const std::vector<KeyTD>& keys,
+    float Insert(const std::vector<KeyT>& keys,
                  const std::vector<ValueT>& values);
     /* query_values[i] is undefined (basically ValueT(0)) if mask[i] == 0 */
-    float Search(const std::vector<KeyTD>& query_keys,
+    float Search(const std::vector<KeyT>& query_keys,
                  std::vector<ValueT>& query_values,
                  std::vector<uint8_t>& mask);
-    float Delete(const std::vector<KeyTD>& keys);
+    float Delete(const std::vector<KeyT>& keys);
 
     /* We assert all memory buffers are allocated prior to the function call
          @keys_device stores keys in KeyT[num_keys x D],
@@ -56,7 +54,7 @@ public:
 
     /* Similar to Insert, but we won't assign value for them;
      * it's more like 'reserve' */
-    float Allocate(const std::vector<KeyTD>& keys);
+    float Allocate(const std::vector<KeyT>& keys);
 
     float ComputeLoadFactor(int flag = 0);
 
@@ -70,16 +68,16 @@ private:
     cudaEvent_t stop_;
 
     /* Handled by CUDA */
-    KeyTD* key_buffer_;
+    KeyT* key_buffer_;
     ValueT* value_buffer_;
-    KeyTD* query_key_buffer_;
+    KeyT* query_key_buffer_;
     ValueT* query_value_buffer_;
     uint8_t* query_result_buffer_;
 
     /* Context manager */
-    std::shared_ptr<MemoryAlloc<KeyTD>> key_allocator_;
+    std::shared_ptr<MemoryAlloc<KeyT>> key_allocator_;
     std::shared_ptr<MemoryAlloc<ValueT>> value_allocator_;
     std::shared_ptr<SlabAlloc> slab_list_allocator_;
 
-    std::shared_ptr<SlabHash<KeyT, D, ValueT, HashFunc>> slab_hash_;
+    std::shared_ptr<SlabHash<KeyT, ValueT, HashFunc>> slab_hash_;
 };

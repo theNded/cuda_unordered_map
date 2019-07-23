@@ -21,19 +21,19 @@
 #include "slab_hash.h"
 
 // fixed known parameters:
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-SlabHashContext<KeyT, D, ValueT, HashFunc>::SlabHashContext()
+template <typename KeyT, typename ValueT, typename HashFunc>
+SlabHashContext<KeyT, ValueT, HashFunc>::SlabHashContext()
     : num_buckets_(0), d_table_(nullptr) {
     // a single slab on a ConcurrentMap should be 128 bytes
     assert(sizeof(ConcurrentSlab) == (WARP_WIDTH * sizeof(uint32_t)));
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__host__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Init(
+template <typename KeyT, typename ValueT, typename HashFunc>
+__host__ void SlabHashContext<KeyT, ValueT, HashFunc>::Init(
         int8_t* d_table,
         const uint32_t num_buckets,
         const SlabAllocContext& allocator_ctx,
-        const MemoryAllocContext<KeyTD>& key_allocator_ctx,
+        const MemoryAllocContext<KeyT>& key_allocator_ctx,
         const MemoryAllocContext<ValueT>& value_allocator_ctx) {
     d_table_ = reinterpret_cast<ConcurrentSlab*>(d_table);
 
@@ -43,18 +43,28 @@ __host__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Init(
     value_allocator_ctx_ = value_allocator_ctx;
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __host__ __forceinline__ uint32_t
-SlabHashContext<KeyT, D, ValueT, HashFunc>::ComputeBucket(
-        const KeyTD& key) const {
+SlabHashContext<KeyT, ValueT, HashFunc>::ComputeBucket(const KeyT& key) const {
     return hash_fn_(key) % num_buckets_;
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ int32_t SlabHashContext<KeyT, D, ValueT, HashFunc>::WarpFindKey(
-        const KeyTD& src_key,
-        const uint32_t lane_id,
-        const uint32_t unit_data) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ __forceinline__ void
+SlabHashContext<KeyT, ValueT, HashFunc>::WarpSyncKey(const KeyT& key,
+                                                     const uint32_t lane_id,
+                                                     KeyT& ret) {
+    const int chunks = sizeof(KeyT) / sizeof(int);
+#pragma unroll 1
+    for (size_t i = 0; i < chunks; ++i) {
+        ((int*)(&ret))[i] = __shfl_sync(ACTIVE_LANE_MASK, ((int*)(&key))[i],
+                                        lane_id, WARP_WIDTH);
+    }
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ int32_t SlabHashContext<KeyT, ValueT, HashFunc>::WarpFindKey(
+        const KeyT& src_key, const uint32_t lane_id, const uint32_t unit_data) {
     bool is_lane_found =
             /* select key lanes */
             ((1 << lane_id) & REGULAR_NODE_KEY_MASK)
@@ -66,31 +76,31 @@ __device__ int32_t SlabHashContext<KeyT, D, ValueT, HashFunc>::WarpFindKey(
     return __ffs(__ballot_sync(REGULAR_NODE_KEY_MASK, is_lane_found)) - 1;
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ int32_t
-SlabHashContext<KeyT, D, ValueT, HashFunc>::WarpFindEmpty(
+SlabHashContext<KeyT, ValueT, HashFunc>::WarpFindEmpty(
         const uint32_t unit_data) {
     bool is_lane_empty = (unit_data == EMPTY_KEY);
 
     return __ffs(__ballot_sync(REGULAR_NODE_KEY_MASK, is_lane_empty)) - 1;
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __host__ __forceinline__ SlabAllocContext&
-SlabHashContext<KeyT, D, ValueT, HashFunc>::getAllocatorContext() {
+SlabHashContext<KeyT, ValueT, HashFunc>::getAllocatorContext() {
     return slab_list_allocator_ctx_;
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ uint32_t*
-SlabHashContext<KeyT, D, ValueT, HashFunc>::getPointerFromSlab(
+SlabHashContext<KeyT, ValueT, HashFunc>::getPointerFromSlab(
         const addr_t& slab_address, const uint32_t lane_id) {
     return slab_list_allocator_ctx_.getPointerFromSlab(slab_address, lane_id);
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ uint32_t*
-SlabHashContext<KeyT, D, ValueT, HashFunc>::getPointerFromBucket(
+SlabHashContext<KeyT, ValueT, HashFunc>::getPointerFromBucket(
         const uint32_t bucket_id, const uint32_t lane_id) {
     return reinterpret_cast<uint32_t*>(d_table_) + bucket_id * BASE_UNIT_SIZE +
            lane_id;
@@ -98,29 +108,28 @@ SlabHashContext<KeyT, D, ValueT, HashFunc>::getPointerFromBucket(
 
 // this function should be operated in a warp-wide fashion
 // TODO: add required asserts to make sure this is true in tests/debugs
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ addr_t
-SlabHashContext<KeyT, D, ValueT, HashFunc>::AllocateSlab(
-        const uint32_t lane_id) {
+SlabHashContext<KeyT, ValueT, HashFunc>::AllocateSlab(const uint32_t lane_id) {
     return slab_list_allocator_ctx_.warpAllocate(lane_id);
 }
 
 // a thread-wide function to free the slab that was just allocated
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ void
-SlabHashContext<KeyT, D, ValueT, HashFunc>::FreeSlab(const addr_t slab_ptr) {
+SlabHashContext<KeyT, ValueT, HashFunc>::FreeSlab(const addr_t slab_ptr) {
     slab_list_allocator_ctx_.freeUntouched(slab_ptr);
 }
 
 //================================================
 // Individual Search Unit:
 //================================================
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Search(
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
         bool& to_search,
         const uint32_t lane_id,
         const uint32_t bucket_id,
-        const KeyTD& key,
+        const KeyT& key,
         ValueT& value,
         uint8_t& found) {
     uint32_t work_queue = 0;
@@ -136,12 +145,8 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Search(
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANE_MASK, bucket_id, src_lane, WARP_WIDTH);
 
-        KeyTD src_key;
-#pragma unroll 1
-        for (size_t i = 0; i < D; ++i) {
-            src_key[i] =
-                    __shfl_sync(ACTIVE_LANE_MASK, key[i], src_lane, WARP_WIDTH);
-        }
+        KeyT src_key;
+        WarpSyncKey(key, src_lane, src_key);
 
         /* Each lane in the warp reads a uint in the slab in parallel */
         const uint32_t unit_data =
@@ -196,12 +201,12 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Search(
  * replacePair: REPLACE if found
  * WE DO NOT ALLOW DUPLICATE KEYS
  */
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::InsertPair(
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
         bool& to_be_inserted,
         const uint32_t lane_id,
         const uint32_t bucket_id,
-        const KeyTD& key,
+        const KeyT& key,
         const ValueT& value) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = 0;
@@ -227,12 +232,8 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::InsertPair(
         uint32_t src_lane = __ffs(work_queue) - 1;
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANE_MASK, bucket_id, src_lane, WARP_WIDTH);
-        KeyTD src_key;
-#pragma unroll 1
-        for (size_t i = 0; i < D; ++i) {
-            src_key[i] =
-                    __shfl_sync(ACTIVE_LANE_MASK, key[i], src_lane, WARP_WIDTH);
-        }
+        KeyT src_key;
+        WarpSyncKey(key, src_lane, src_key);
 
         /* Each lane in the warp reads a uint in the slab */
         uint32_t unit_data =
@@ -329,12 +330,12 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::InsertPair(
     }
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-__device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Delete(
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Delete(
         bool& to_be_deleted,
         const uint32_t lane_id,
         const uint32_t bucket_id,
-        const KeyTD& key) {
+        const KeyT& key) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = 0;
     uint32_t curr_slab_ptr = HEAD_SLAB_POINTER;
@@ -349,12 +350,8 @@ __device__ void SlabHashContext<KeyT, D, ValueT, HashFunc>::Delete(
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANE_MASK, bucket_id, src_lane, WARP_WIDTH);
 
-        KeyTD src_key;
-#pragma unroll 1
-        for (size_t i = 0; i < D; ++i) {
-            src_key[i] =
-                    __shfl_sync(ACTIVE_LANE_MASK, key[i], src_lane, WARP_WIDTH);
-        }
+        KeyT src_key;
+        WarpSyncKey(key, src_lane, src_key);
 
         const uint32_t unit_data =
                 (curr_slab_ptr == HEAD_SLAB_POINTER)

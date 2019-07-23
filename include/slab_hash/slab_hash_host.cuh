@@ -19,11 +19,11 @@
 #include "slab_hash.h"
 #include "slab_hash_kernel.cuh"
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-SlabHash<KeyT, D, ValueT, HashFunc>::SlabHash(
+template <typename KeyT, typename ValueT, typename HashFunc>
+SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
         const uint32_t num_buckets,
         const std::shared_ptr<SlabAlloc>& slab_list_allocator,
-        const std::shared_ptr<MemoryAlloc<KeyTD>>& key_allocator,
+        const std::shared_ptr<MemoryAlloc<KeyT>>& key_allocator,
         const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
         uint32_t device_idx)
     : num_buckets_(num_buckets),
@@ -41,55 +41,54 @@ SlabHash<KeyT, D, ValueT, HashFunc>::SlabHash(
 
     CHECK_CUDA(cudaSetDevice(device_idx_));
 
-
     // allocating initial buckets:
     CHECK_CUDA(cudaMalloc(&d_table_, sizeof(ConcurrentSlab) * num_buckets_));
-    CHECK_CUDA(cudaMemset(d_table_, 0xFF, sizeof(ConcurrentSlab) * num_buckets_));
+    CHECK_CUDA(
+            cudaMemset(d_table_, 0xFF, sizeof(ConcurrentSlab) * num_buckets_));
 
     gpu_context_.Init(
             d_table_, num_buckets_, slab_list_allocator_->getContext(),
             key_allocator_->gpu_context_, value_allocator_->gpu_context_);
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-SlabHash<KeyT, D, ValueT, HashFunc>::~SlabHash() {
+template <typename KeyT, typename ValueT, typename HashFunc>
+SlabHash<KeyT, ValueT, HashFunc>::~SlabHash() {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     CHECK_CUDA(cudaFree(d_table_));
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void SlabHash<KeyT, D, ValueT, HashFunc>::Insert(KeyTD* keys,
-                                                 ValueT* values,
-                                                 uint32_t num_keys) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+void SlabHash<KeyT, ValueT, HashFunc>::Insert(KeyT* keys,
+                                              ValueT* values,
+                                              uint32_t num_keys) {
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     // calling the kernel for bulk build:
     CHECK_CUDA(cudaSetDevice(device_idx_));
-    InsertKernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
-            gpu_context_, keys, values, num_keys);
+    InsertKernel<KeyT, ValueT, HashFunc>
+            <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, values, num_keys);
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void SlabHash<KeyT, D, ValueT, HashFunc>::Search(KeyTD* keys,
-                                                 ValueT* values,
-                                                 uint8_t* founds,
-                                                 uint32_t num_queries) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+void SlabHash<KeyT, ValueT, HashFunc>::Search(KeyT* keys,
+                                              ValueT* values,
+                                              uint8_t* founds,
+                                              uint32_t num_queries) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_queries + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    SearchKernel<KeyT, D, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
+    SearchKernel<KeyT, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
             gpu_context_, keys, values, founds, num_queries);
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-void SlabHash<KeyT, D, ValueT, HashFunc>::Delete(KeyTD* keys,
-                                                 uint32_t num_keys) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+void SlabHash<KeyT, ValueT, HashFunc>::Delete(KeyT* keys, uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    DeleteKernel<KeyT, D, ValueT, HashFunc>
+    DeleteKernel<KeyT, ValueT, HashFunc>
             <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, num_keys);
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
-double SlabHash<KeyT, D, ValueT, HashFunc>::ComputeLoadFactor(int flag = 0) {
+template <typename KeyT, typename ValueT, typename HashFunc>
+double SlabHash<KeyT, ValueT, HashFunc>::ComputeLoadFactor(int flag = 0) {
     uint32_t* h_bucket_count = new uint32_t[num_buckets_];
     uint32_t* d_bucket_count;
     CHECK_CUDA(cudaMalloc((void**)&d_bucket_count,
@@ -108,7 +107,7 @@ double SlabHash<KeyT, D, ValueT, HashFunc>::ComputeLoadFactor(int flag = 0) {
     // counting the number of inserted elements:
     const uint32_t blocksize = 128;
     const uint32_t num_blocks = (num_buckets_ * 32 + blocksize - 1) / blocksize;
-    bucket_count_kernel<KeyT, D, ValueT, HashFunc><<<num_blocks, blocksize>>>(
+    bucket_count_kernel<KeyT, ValueT, HashFunc><<<num_blocks, blocksize>>>(
             gpu_context_, d_bucket_count, num_buckets_);
     CHECK_CUDA(cudaMemcpy(h_bucket_count, d_bucket_count,
                           sizeof(uint32_t) * num_buckets_,

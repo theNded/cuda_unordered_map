@@ -24,14 +24,14 @@
 #include <vector>
 #include "coordinate_hash_map.cuh"
 
-using KeyT = uint32_t;
+
 constexpr size_t D = 7;
+using KeyT = Coordinate<int32_t, D>;
 using ValueT = uint32_t;
-using HashFunc = CoordinateHashFunc<KeyT, D>;
-using KeyTD = Coordinate<KeyT, D>;
+using HashFunc = CoordinateHashFunc<int32_t, D>;
 
 struct DataTupleCPU {
-    std::vector<KeyTD> keys;
+    std::vector<KeyT> keys;
     std::vector<ValueT> values;
     std::vector<uint8_t> masks;
 
@@ -65,7 +65,7 @@ struct DataTupleGPU {
 
     void Resize(uint32_t new_size) {
         Free();
-        CHECK_CUDA(cudaMalloc(&keys, sizeof(KeyT) * D * new_size));
+        CHECK_CUDA(cudaMalloc(&keys, sizeof(KeyT) * new_size));
         CHECK_CUDA(cudaMalloc(&values, sizeof(ValueT) * new_size));
         CHECK_CUDA(cudaMalloc(&masks, sizeof(uint8_t) * new_size));
 
@@ -74,7 +74,7 @@ struct DataTupleGPU {
 
     void Upload(const DataTupleCPU &data, bool only_keys = false) {
         assert(size == data.keys.size());
-        CHECK_CUDA(cudaMemcpy(keys, data.keys.data(), sizeof(KeyT) * D * size,
+        CHECK_CUDA(cudaMemcpy(keys, data.keys.data(), sizeof(KeyT) * size,
                               cudaMemcpyHostToDevice));
         if (!only_keys) {
             CHECK_CUDA(cudaMemcpy(values, data.values.data(),
@@ -88,7 +88,7 @@ struct DataTupleGPU {
 
     void Download(DataTupleCPU &data) {
         assert(size == data.keys.size());
-        CHECK_CUDA(cudaMemcpy(data.keys.data(), keys, sizeof(KeyT) * D * size,
+        CHECK_CUDA(cudaMemcpy(data.keys.data(), keys, sizeof(KeyT) * size,
                               cudaMemcpyDeviceToHost));
         CHECK_CUDA(cudaMemcpy(data.values.data(), values, sizeof(ValueT) * size,
                               cudaMemcpyDeviceToHost));
@@ -172,7 +172,7 @@ public:
         }
 
         /* insertion */
-        insert_data.keys = std::vector<KeyTD>(
+        insert_data.keys = std::vector<KeyT>(
                 query_data_gt.keys.begin(),
                 query_data_gt.keys.begin() + num_hit_queries);
         insert_data.values = std::vector<ValueT>(
@@ -226,7 +226,7 @@ public:
         return true;
     }
 
-    std::vector<KeyTD> keys_pool_;
+    std::vector<KeyT> keys_pool_;
     std::vector<ValueT> values_pool_;
 
     int keys_pool_size_;
@@ -237,7 +237,7 @@ public:
 
 int TestInsert(TestDataHelperGPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
+    CoordinateHashMap<KeyT, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -270,7 +270,7 @@ int TestInsert(TestDataHelperGPU &data_generator) {
 
 int TestDelete(TestDataHelperGPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
+    CoordinateHashMap<KeyT, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -324,7 +324,7 @@ int TestDelete(TestDataHelperGPU &data_generator) {
 
 int TestConflict(TestDataHelperGPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
+    CoordinateHashMap<KeyT, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -382,7 +382,7 @@ int TestConflict(TestDataHelperGPU &data_generator) {
 int main() {
     const int key_value_pool_size = 1 << 20;
     const float existing_ratio = 0.6f;
-    CoordinateHashMap<KeyT, D, ValueT, HashFunc> hash_table(
+    CoordinateHashMap<KeyT, ValueT, HashFunc> hash_table(
             key_value_pool_size);
 
     auto data_generator =

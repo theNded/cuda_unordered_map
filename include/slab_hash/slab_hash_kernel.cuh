@@ -20,10 +20,10 @@
 #include "slab_hash_ctx.cuh"
 
 //=== Individual search kernel:
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __global__ void SearchKernel(
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx,
-        Coordinate<KeyT, D>* keys,
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx,
+        KeyT* keys,
         ValueT* values,
         uint8_t* founds,
         uint32_t num_queries) {
@@ -40,7 +40,7 @@ __global__ void SearchKernel(
 
     bool lane_active = false;
     uint32_t bucket_id = 0;
-    Coordinate<KeyT, D> key;
+    KeyT key;
     ValueT value;
     uint8_t found;
 
@@ -58,10 +58,10 @@ __global__ void SearchKernel(
     }
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __global__ void InsertKernel(
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx,
-        Coordinate<KeyT, D>* keys,
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx,
+        KeyT* keys,
         ValueT* values,
         uint32_t num_keys) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -75,7 +75,7 @@ __global__ void InsertKernel(
 
     bool lane_active = false;
     uint32_t bucket_id = 0;
-    Coordinate<KeyT, D> key;
+    KeyT key;
     ValueT value;
 
     if (tid < num_keys) {
@@ -88,10 +88,10 @@ __global__ void InsertKernel(
     slab_hash_ctx.InsertPair(lane_active, lane_id, bucket_id, key, value);
 }
 
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __global__ void DeleteKernel(
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx,
-        Coordinate<KeyT, D>* keys,
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx,
+        KeyT* keys,
         uint32_t num_keys) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
@@ -104,7 +104,7 @@ __global__ void DeleteKernel(
 
     bool lane_active = false;
     uint32_t bucket_id = 0;
-    Coordinate<KeyT, D> key;
+    KeyT key;
 
     if (tid < num_keys) {
         lane_active = true;
@@ -119,9 +119,9 @@ __global__ void DeleteKernel(
  * This kernel can be used to compute total number of elements within each
  * bucket. The final results per bucket is stored in d_count_result array
  */
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __global__ void bucket_count_kernel(
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx,
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx,
         uint32_t* d_count_result,
         uint32_t num_buckets) {
     // global warp ID
@@ -162,10 +162,10 @@ __global__ void bucket_count_kernel(
  * allocator and store number of allocated slabs.
  * TODO: this should be moved into allocator's codebase (violation of layers)
  */
-template <typename KeyT, size_t D, typename ValueT, typename HashFunc>
+template <typename KeyT, typename ValueT, typename HashFunc>
 __global__ void compute_stats_allocators(
         uint32_t* d_count_super_block,
-        SlabHashContext<KeyT, D, ValueT, HashFunc> slab_hash_ctx) {
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     int num_bitmaps = slab_hash_ctx.getAllocatorContext()
