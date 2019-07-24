@@ -72,7 +72,7 @@ public:
 
     ~SlabAllocContext() {}
 
-    void Init(uint32_t* super_blocks, uint32_t hash_coef) {
+    void Setup(uint32_t* super_blocks, uint32_t hash_coef) {
         super_blocks_ = super_blocks;
         hash_coef_ = hash_coef;
     }
@@ -88,7 +88,7 @@ public:
     }
 
     // Objective: each warp selects its own resident warp allocator:
-    __device__ void initAllocator(uint32_t& tid, uint32_t& lane_id) {
+    __device__ void Init(uint32_t& tid, uint32_t& lane_id) {
         // hashing the memory block to be used:
         createMemBlockIndex(tid >> 5);
 
@@ -293,7 +293,7 @@ public:
         }
 
         // initializing the slab context:
-        slab_alloc_context_.Init(super_blocks_, hash_coef_);
+        slab_alloc_context_.Setup(super_blocks_, hash_coef_);
     }
     ~SlabAlloc() { CHECK_CUDA(cudaFree(super_blocks_)); }
 

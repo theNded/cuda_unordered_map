@@ -23,17 +23,17 @@ template <typename KeyT, typename ValueT, typename HashFunc>
 SlabHashContext<KeyT, ValueT, HashFunc>::SlabHashContext()
     : num_buckets_(0), bucket_list_head_(nullptr) {
     // a single slab on a ConcurrentMap should be 128 bytes
-    assert(sizeof(ConcurrentSlab) == (WARP_WIDTH * sizeof(uint32_t)));
+    static_assert(sizeof(Slab) == (WARP_WIDTH * sizeof(uint32_t)));
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
-__host__ void SlabHashContext<KeyT, ValueT, HashFunc>::Init(
-        int8_t* bucket_list_head,
+__host__ void SlabHashContext<KeyT, ValueT, HashFunc>::Setup(
+        Slab* bucket_list_head,
         const uint32_t num_buckets,
         const SlabAllocContext& allocator_ctx,
         const MemoryAllocContext<KeyT>& key_allocator_ctx,
         const MemoryAllocContext<ValueT>& value_allocator_ctx) {
-    bucket_list_head_ = reinterpret_cast<ConcurrentSlab*>(bucket_list_head);
+    bucket_list_head_ = bucket_list_head;
 
     num_buckets_ = num_buckets;
     slab_list_allocator_ctx_ = allocator_ctx;
@@ -84,39 +84,14 @@ SlabHashContext<KeyT, ValueT, HashFunc>::WarpFindEmpty(
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
-__device__ __host__ __forceinline__ SlabAllocContext&
-SlabHashContext<KeyT, ValueT, HashFunc>::getAllocatorContext() {
-    return slab_list_allocator_ctx_;
-}
-
-template <typename KeyT, typename ValueT, typename HashFunc>
-__device__ __forceinline__ uint32_t*
-SlabHashContext<KeyT, ValueT, HashFunc>::get_unit_ptr_from_list_nodes(
-        const addr_t& slab_address, const uint32_t lane_id) {
-    return slab_list_allocator_ctx_.get_unit_ptr_from_slab(slab_address,
-                                                           lane_id);
-}
-
-template <typename KeyT, typename ValueT, typename HashFunc>
-__device__ __forceinline__ uint32_t*
-SlabHashContext<KeyT, ValueT, HashFunc>::get_unit_ptr_from_list_head(
-        const uint32_t bucket_id, const uint32_t lane_id) {
-    return reinterpret_cast<uint32_t*>(bucket_list_head_) +
-           bucket_id * BASE_UNIT_SIZE + lane_id;
-}
-
-// this function should be operated in a warp-wide fashion
-// TODO: add required asserts to make sure this is true in tests/debugs
-template <typename KeyT, typename ValueT, typename HashFunc>
-__device__ __forceinline__ addr_t
+__device__ __forceinline__ slab_ptr_t
 SlabHashContext<KeyT, ValueT, HashFunc>::AllocateSlab(const uint32_t lane_id) {
     return slab_list_allocator_ctx_.WarpAllocate(lane_id);
 }
 
-// a thread-wide function to free the slab that was just allocated
 template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ void
-SlabHashContext<KeyT, ValueT, HashFunc>::FreeSlab(const addr_t slab_ptr) {
+SlabHashContext<KeyT, ValueT, HashFunc>::FreeSlab(const slab_ptr_t slab_ptr) {
     slab_list_allocator_ctx_.FreeUntouched(slab_ptr);
 }
 
@@ -128,8 +103,8 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
         bool& to_search,
         const uint32_t lane_id,
         const uint32_t bucket_id,
-        const KeyT& key,
-        ValueT& value,
+        const KeyT& query_key,
+        ValueT& found_value,
         uint8_t& found) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = work_queue;
@@ -145,7 +120,7 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
                 __shfl_sync(ACTIVE_LANE_MASK, bucket_id, src_lane, WARP_WIDTH);
 
         KeyT src_key;
-        WarpSyncKey(key, src_lane, src_key);
+        WarpSyncKey(query_key, src_lane, src_key);
 
         /* Each lane in the warp reads a uint in the slab in parallel */
         const uint32_t unit_data =
@@ -159,11 +134,12 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
         /** 1. Found in this slab, SUCCEED **/
         if (lane_found >= 0) {
             /* broadcast found value */
-            uint32_t found_value = __shfl_sync(ACTIVE_LANE_MASK, unit_data,
-                                               lane_found + 1, WARP_WIDTH);
+            internal_ptr_t found_value_internal_ptr = __shfl_sync(
+                    ACTIVE_LANE_MASK, unit_data, lane_found + 1, WARP_WIDTH);
 
             if (lane_id == src_lane) {
-                value = value_allocator_ctx_.value_at(found_value);
+                found_value =
+                        value_allocator_ctx_.value_at(found_value_internal_ptr);
                 found = 1;
                 to_search = false;
             }
@@ -172,12 +148,12 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
         /** 2. Not found in this slab **/
         else {
             /* broadcast next slab: lane 31 reads 'next' */
-            uint32_t curr_slab_next_ptr =
+            slab_ptr_t next_slab_ptr =
                     __shfl_sync(ACTIVE_LANE_MASK, unit_data,
                                 NEXT_SLAB_POINTER_LANE, WARP_WIDTH);
 
             /** 2.1. Next slab is empty, ABORT **/
-            if (curr_slab_next_ptr == EMPTY_SLAB_POINTER) {
+            if (next_slab_ptr == EMPTY_SLAB_POINTER) {
                 if (lane_id == src_lane) {
                     found = 0;
                     to_search = false;
@@ -185,7 +161,7 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
             }
             /** 2.2. Next slab exists, RESTART **/
             else {
-                curr_slab_ptr = curr_slab_next_ptr;
+                curr_slab_ptr = next_slab_ptr;
             }
         }
 
@@ -214,14 +190,14 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
 
     /** WARNING: Allocation should be finished in warp,
      * results are unexpected otherwise **/
-    int key_addr = EMPTY_KEY;
-    int value_addr = EMPTY_KEY;
+    int prealloc_key_internal_ptr = EMPTY_KEY;
+    int prealloc_value_internal_ptr = EMPTY_KEY;
     if (to_be_inserted) {
-        key_addr = key_allocator_ctx_.Allocate();
-        key_allocator_ctx_.value_at(key_addr) = key;
+        prealloc_key_internal_ptr = key_allocator_ctx_.Allocate();
+        key_allocator_ctx_.value_at(prealloc_key_internal_ptr) = key;
 
-        value_addr = value_allocator_ctx_.Allocate();
-        value_allocator_ctx_.value_at(value_addr) = value;
+        prealloc_value_internal_ptr = value_allocator_ctx_.Allocate();
+        value_allocator_ctx_.value_at(prealloc_value_internal_ptr) = value;
     }
 
     /** > Loop when we have active lanes **/
@@ -250,7 +226,8 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
             if (lane_id == src_lane) {
                 /* free memory heap */
                 to_be_inserted = false;
-                key_allocator_ctx_.Free(key_addr);
+                key_allocator_ctx_.Free(prealloc_key_internal_ptr);
+                value_allocator_ctx_.Free(prealloc_value_internal_ptr);
             }
         }
 
@@ -258,25 +235,21 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
         else if (lane_empty >= 0) {
             if (lane_id == src_lane) {
                 // TODO: check why we cannot put malloc here
-                const uint32_t* p =
+                const uint32_t* unit_data_ptr =
                         (curr_slab_ptr == HEAD_SLAB_POINTER)
                                 ? get_unit_ptr_from_list_head(src_bucket,
                                                               lane_empty)
                                 : get_unit_ptr_from_list_nodes(curr_slab_ptr,
                                                                lane_empty);
 
-                uint64_t old_key_value_pair = atomicCAS(
-                        (unsigned long long int*)p, EMPTY_PAIR_64,
-                        ((uint64_t)(*reinterpret_cast<const uint32_t*>(
-                                 reinterpret_cast<const unsigned char*>(
-                                         &value_addr)))
-                         << 32) |
-                                *reinterpret_cast<const uint32_t*>(
-                                        reinterpret_cast<const unsigned char*>(
-                                                &key_addr)));
+                paired_internal_ptr_t new_key_value_ptr_pair = MAKE_PAIRED_PTR(
+                        prealloc_key_internal_ptr, prealloc_value_internal_ptr);
+                paired_internal_ptr_t old_key_value_ptr_pair = atomicCAS(
+                        (unsigned long long int*)unit_data_ptr, EMPTY_PAIR_64,
+                        (*(unsigned long long int*)&new_key_value_ptr_pair));
 
                 /** Branch 2.1: SUCCEED **/
-                if (old_key_value_pair == EMPTY_PAIR_64) {
+                if (old_key_value_ptr_pair == EMPTY_PAIR_64) {
                     to_be_inserted = false;
                 }
                 /** Branch 2.2: failed: RESTART
@@ -292,21 +265,21 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
         /** Branch 3: nothing found in this slab, goto next slab **/
         else {
             /* broadcast next slab */
-            uint32_t curr_slab_next_ptr =
+            slab_ptr_t next_slab_ptr =
                     __shfl_sync(ACTIVE_LANE_MASK, unit_data,
                                 NEXT_SLAB_POINTER_LANE, WARP_WIDTH);
 
             /** Branch 3.1: next slab existing, RESTART this lane **/
-            if (curr_slab_next_ptr != EMPTY_SLAB_POINTER) {
-                curr_slab_ptr = curr_slab_next_ptr;
+            if (next_slab_ptr != EMPTY_SLAB_POINTER) {
+                curr_slab_ptr = next_slab_ptr;
             }
 
             /** Branch 3.2: next slab empty, try to allocate one **/
             else {
-                uint32_t new_node_ptr = AllocateSlab(lane_id);
+                slab_ptr_t new_next_slab_ptr = AllocateSlab(lane_id);
 
                 if (lane_id == NEXT_SLAB_POINTER_LANE) {
-                    const uint32_t* p =
+                    const uint32_t* unit_data_ptr =
                             (curr_slab_ptr == HEAD_SLAB_POINTER)
                                     ? get_unit_ptr_from_list_head(
                                               src_bucket,
@@ -315,13 +288,14 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
                                               curr_slab_ptr,
                                               NEXT_SLAB_POINTER_LANE);
 
-                    uint32_t old_next_slab_ptr = atomicCAS(
-                            (unsigned int*)p, EMPTY_SLAB_POINTER, new_node_ptr);
+                    slab_ptr_t old_next_slab_ptr =
+                            atomicCAS((unsigned int*)unit_data_ptr,
+                                      EMPTY_SLAB_POINTER, new_next_slab_ptr);
 
                     /** Branch 3.2.1: other thread allocated, RESTART lane
                      *  In the consequent attempt, goto Branch 2' **/
                     if (old_next_slab_ptr != EMPTY_SLAB_POINTER) {
-                        FreeSlab(new_node_ptr);
+                        FreeSlab(new_next_slab_ptr);
                     }
                     /** Branch 3.2.2: this thread allocated, RESTART lane,
                      * 'goto Branch 2' **/
@@ -366,41 +340,42 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Delete(
 
         /** Branch 1: key found **/
         if (lane_found >= 0) {
-            uint32_t src_addr = __shfl_sync(ACTIVE_LANE_MASK, unit_data,
-                                            lane_found, WARP_WIDTH);
-            uint32_t src_value_addr = __shfl_sync(ACTIVE_LANE_MASK, unit_data,
-                                                  lane_found + 1, WARP_WIDTH);
+            internal_ptr_t src_key_internal_ptr = __shfl_sync(
+                    ACTIVE_LANE_MASK, unit_data, lane_found, WARP_WIDTH);
+            internal_ptr_t src_value_internal_ptr = __shfl_sync(
+                    ACTIVE_LANE_MASK, unit_data, lane_found + 1, WARP_WIDTH);
             if (lane_id == src_lane) {
-                uint32_t* p = (curr_slab_ptr == HEAD_SLAB_POINTER)
-                                      ? get_unit_ptr_from_list_head(src_bucket,
-                                                                    lane_found)
-                                      : get_unit_ptr_from_list_nodes(
-                                                curr_slab_ptr, lane_found);
-                uint64_t key_value_pair_to_delete =
-                        *reinterpret_cast<unsigned long long int*>(p);
+                uint32_t* unit_data_ptr =
+                        (curr_slab_ptr == HEAD_SLAB_POINTER)
+                                ? get_unit_ptr_from_list_head(src_bucket,
+                                                              lane_found)
+                                : get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                               lane_found);
+                paired_internal_ptr_t key_value_pair_to_delete =
+                        *(paired_internal_ptr_t*)unit_data_ptr;
 
                 // TODO: keep in mind the potential double free problem
-                uint64_t old_key_value_pair =
-                        atomicCAS(reinterpret_cast<unsigned long long int*>(p),
+                paired_internal_ptr_t old_key_value_pair =
+                        atomicCAS((unsigned long long int*)(unit_data_ptr),
                                   key_value_pair_to_delete, EMPTY_PAIR_64);
                 /** Branch 1.1: this thread reset, free src_addr **/
                 if (old_key_value_pair == key_value_pair_to_delete) {
-                    key_allocator_ctx_.Free(src_addr);
-                    value_allocator_ctx_.Free(src_value_addr);
+                    key_allocator_ctx_.Free(src_key_internal_ptr);
+                    value_allocator_ctx_.Free(src_value_internal_ptr);
                 }
                 /** Branch 1.2: other thread did the job, avoid double free
                  * **/
                 to_be_deleted = false;
             }
         } else {  // no matching slot found:
-            uint32_t curr_slab_next_ptr =
+            slab_ptr_t next_slab_ptr =
                     __shfl_sync(ACTIVE_LANE_MASK, unit_data,
                                 NEXT_SLAB_POINTER_LANE, WARP_WIDTH);
-            if (curr_slab_next_ptr == EMPTY_SLAB_POINTER) {
+            if (next_slab_ptr == EMPTY_SLAB_POINTER) {
                 // not found:
                 to_be_deleted = false;
             } else {
-                curr_slab_ptr = curr_slab_next_ptr;
+                curr_slab_ptr = next_slab_ptr;
             }
         }
         prev_work_queue = work_queue;

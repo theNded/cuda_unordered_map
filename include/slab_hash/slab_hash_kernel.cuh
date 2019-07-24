@@ -36,7 +36,7 @@ __global__ void SearchKernel(
     }
 
     /* Initialize the memory allocator on each warp */
-    slab_hash_ctx.getAllocatorContext().initAllocator(tid, lane_id);
+    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
 
     bool lane_active = false;
     uint32_t bucket_id = 0;
@@ -71,7 +71,7 @@ __global__ void InsertKernel(
         return;
     }
 
-    slab_hash_ctx.getAllocatorContext().initAllocator(tid, lane_id);
+    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
 
     bool lane_active = false;
     uint32_t bucket_id = 0;
@@ -100,7 +100,7 @@ __global__ void DeleteKernel(
         return;
     }
 
-    slab_hash_ctx.getAllocatorContext().initAllocator(tid, lane_id);
+    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
 
     bool lane_active = false;
     uint32_t bucket_id = 0;
@@ -135,7 +135,7 @@ __global__ void bucket_count_kernel(
     uint32_t lane_id = threadIdx.x & 0x1F;
 
     // initializing the memory allocator on each warp:
-    slab_hash_ctx.getAllocatorContext().initAllocator(tid, lane_id);
+    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
 
     uint32_t count = 0;
 
@@ -170,17 +170,17 @@ __global__ void compute_stats_allocators(
         SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
-    int num_bitmaps = slab_hash_ctx.getAllocatorContext()
-                              .NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
-                      32;
+    int num_bitmaps =
+            slab_hash_ctx.get_slab_alloc_ctx().NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
+            32;
     if (tid >= num_bitmaps) {
         return;
     }
 
-    for (int i = 0; i < slab_hash_ctx.getAllocatorContext().num_super_blocks_;
+    for (int i = 0; i < slab_hash_ctx.get_slab_alloc_ctx().num_super_blocks_;
          i++) {
         uint32_t read_bitmap = *(
-                slab_hash_ctx.getAllocatorContext().get_ptr_for_bitmap(i, tid));
+                slab_hash_ctx.get_slab_alloc_ctx().get_ptr_for_bitmap(i, tid));
         atomicAdd(&d_count_super_block[i], __popc(read_bitmap));
     }
 }

@@ -42,4 +42,12 @@ static constexpr uint32_t REGULAR_NODE_KEY_MASK = 0x15555555;
 static constexpr uint32_t REGULAR_NODE_DATA_MASK = 0x3FFFFFFF;
 
 using addr_t = uint32_t;
+
+/* These types are all the same, but distiguish the naming can lead to clearer
+ * meanings*/
 using internal_ptr_t = uint32_t;
+using slab_ptr_t = uint32_t;
+
+using paired_internal_ptr_t = uint64_t;
+#define MAKE_PAIRED_PTR(ptr_a, ptr_b) \
+    ((uint64_t(ptr_b) << 32) | uint64_t(ptr_a))

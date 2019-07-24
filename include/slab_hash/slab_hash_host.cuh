@@ -42,11 +42,11 @@ SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
     CHECK_CUDA(cudaSetDevice(device_idx_));
 
     // allocating initial buckets:
-    CHECK_CUDA(cudaMalloc(&bucket_list_head_, sizeof(ConcurrentSlab) * num_buckets_));
+    CHECK_CUDA(cudaMalloc(&bucket_list_head_, sizeof(Slab) * num_buckets_));
     CHECK_CUDA(
-            cudaMemset(bucket_list_head_, 0xFF, sizeof(ConcurrentSlab) * num_buckets_));
+            cudaMemset(bucket_list_head_, 0xFF, sizeof(Slab) * num_buckets_));
 
-    gpu_context_.Init(
+    gpu_context_.Setup(
             bucket_list_head_, num_buckets_, slab_list_allocator_->getContext(),
             key_allocator_->gpu_context_, value_allocator_->gpu_context_);
 }
@@ -95,7 +95,7 @@ double SlabHash<KeyT, ValueT, HashFunc>::ComputeLoadFactor(int flag = 0) {
                           sizeof(uint32_t) * num_buckets_));
     CHECK_CUDA(cudaMemset(d_bucket_count, 0, sizeof(uint32_t) * num_buckets_));
 
-    const auto& dynamic_alloc = gpu_context_.getAllocatorContext();
+    const auto& dynamic_alloc = gpu_context_.get_slab_alloc_ctx();
     const uint32_t num_super_blocks = dynamic_alloc.num_super_blocks_;
     uint32_t* h_count_super_blocks = new uint32_t[num_super_blocks];
     uint32_t* d_count_super_blocks;

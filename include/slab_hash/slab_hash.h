@@ -22,16 +22,11 @@
 #include "../memory_alloc/memory_alloc.h"
 #include "../memory_alloc/slab_alloc.h"
 
-/** Internal addresses managed by memory_alloc **/
-struct KeyValuePtrPair {
-    internal_ptr_t key;
-    internal_ptr_t value;
-};
-
-struct ConcurrentSlab {
-    // 15 x 2 + 2
-    KeyValuePtrPair data[15];
-    uint32_t ptr_index[2];
+struct Slab {
+    // 15 x 2 + 1 + 1
+    paired_internal_ptr_t data[15];
+    slab_ptr_t next_slab_ptr;
+    uint32_t padding;
 };
 
 /*
@@ -58,11 +53,11 @@ template <typename KeyT, typename ValueT, typename HashFunc>
 class SlabHashContext {
 public:
     SlabHashContext();
-    __host__ void Init(int8_t* bucket_list_head,
-                       const uint32_t num_buckets,
-                       const SlabAllocContext& allocator_ctx,
-                       const MemoryAllocContext<KeyT>& key_allocator_ctx,
-                       const MemoryAllocContext<ValueT>& value_allocator_ctx);
+    __host__ void Setup(Slab* bucket_list_head,
+                        const uint32_t num_buckets,
+                        const SlabAllocContext& allocator_ctx,
+                        const MemoryAllocContext<KeyT>& key_allocator_ctx,
+                        const MemoryAllocContext<ValueT>& value_allocator_ctx);
 
     /* Core SIMT operations */
     __device__ void InsertPair(bool& lane_active,
@@ -95,22 +90,30 @@ public:
                                                    const uint32_t unit_data);
     __device__ __forceinline__ int32_t WarpFindEmpty(const uint32_t unit_data);
 
-    __device__ __host__ __forceinline__ SlabAllocContext& getAllocatorContext();
+    __device__ __host__ __forceinline__ SlabAllocContext& get_slab_alloc_ctx() {
+        return slab_list_allocator_ctx_;
+    }
 
     __device__ __forceinline__ uint32_t* get_unit_ptr_from_list_nodes(
-            const addr_t& slab_address, const uint32_t lane_id);
+            const slab_ptr_t slab_ptr, const uint32_t lane_id) {
+        return slab_list_allocator_ctx_.get_unit_ptr_from_slab(slab_ptr,
+                                                               lane_id);
+    }
     __device__ __forceinline__ uint32_t* get_unit_ptr_from_list_head(
-            const uint32_t bucket_id, const uint32_t lane_id);
+            const uint32_t bucket_id, const uint32_t lane_id) {
+        return reinterpret_cast<uint32_t*>(bucket_list_head_) +
+               bucket_id * BASE_UNIT_SIZE + lane_id;
+    }
 
 private:
-    __device__ __forceinline__ addr_t AllocateSlab(const uint32_t lane_id);
-    __device__ __forceinline__ void FreeSlab(const addr_t slab_ptr);
+    __device__ __forceinline__ slab_ptr_t AllocateSlab(const uint32_t lane_id);
+    __device__ __forceinline__ void FreeSlab(const slab_ptr_t slab_ptr);
 
 private:
     uint32_t num_buckets_;
     HashFunc hash_fn_;
 
-    ConcurrentSlab* bucket_list_head_;
+    Slab* bucket_list_head_;
     SlabAllocContext slab_list_allocator_ctx_;
     MemoryAllocContext<KeyT> key_allocator_ctx_;
     MemoryAllocContext<ValueT> value_allocator_ctx_;
@@ -126,7 +129,7 @@ private:
 
     uint32_t num_buckets_;
 
-    int8_t* bucket_list_head_;
+    Slab* bucket_list_head_;
 
     SlabHashContext<KeyT, ValueT, HashFunc> gpu_context_;
     std::shared_ptr<MemoryAlloc<KeyT>> key_allocator_;
