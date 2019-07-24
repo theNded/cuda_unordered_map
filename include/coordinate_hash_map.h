@@ -77,6 +77,7 @@ private:
     /* Context manager */
     std::shared_ptr<MemoryAlloc<KeyT>> key_allocator_;
     std::shared_ptr<MemoryAlloc<ValueT>> value_allocator_;
+    std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>> pair_allocator_;
     std::shared_ptr<SlabAlloc> slab_list_allocator_;
 
     std::shared_ptr<SlabHash<KeyT, ValueT, HashFunc>> slab_hash_;

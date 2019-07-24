@@ -32,13 +32,16 @@ __host__ void SlabHashContext<KeyT, ValueT, HashFunc>::Setup(
         const uint32_t num_buckets,
         const SlabAllocContext& allocator_ctx,
         const MemoryAllocContext<KeyT>& key_allocator_ctx,
-        const MemoryAllocContext<ValueT>& value_allocator_ctx) {
+        const MemoryAllocContext<ValueT>& value_allocator_ctx,
+        const MemoryAllocContext<thrust::pair<KeyT, ValueT>>&
+                pair_allocator_ctx) {
     bucket_list_head_ = bucket_list_head;
 
     num_buckets_ = num_buckets;
     slab_list_allocator_ctx_ = allocator_ctx;
     key_allocator_ctx_ = key_allocator_ctx;
     value_allocator_ctx_ = value_allocator_ctx;
+    pair_allocator_ctx_ = pair_allocator_ctx;
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>

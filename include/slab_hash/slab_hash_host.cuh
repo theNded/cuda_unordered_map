@@ -25,11 +25,14 @@ SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
         const std::shared_ptr<SlabAlloc>& slab_list_allocator,
         const std::shared_ptr<MemoryAlloc<KeyT>>& key_allocator,
         const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
+        const std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>>&
+                pair_allocator,
         uint32_t device_idx)
     : num_buckets_(num_buckets),
       slab_list_allocator_(slab_list_allocator),
       key_allocator_(key_allocator),
       value_allocator_(value_allocator),
+      pair_allocator_(pair_allocator),
       device_idx_(device_idx),
       bucket_list_head_(nullptr) {
     assert(slab_list_allocator && key_allocator &&
@@ -48,7 +51,8 @@ SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
 
     gpu_context_.Setup(
             bucket_list_head_, num_buckets_, slab_list_allocator_->getContext(),
-            key_allocator_->gpu_context_, value_allocator_->gpu_context_);
+            key_allocator_->gpu_context_, value_allocator_->gpu_context_,
+            pair_allocator_->gpu_context_);
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>

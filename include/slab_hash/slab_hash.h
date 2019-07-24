@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <thrust/pair.h>
 #include <cassert>
 #include <memory>
 
@@ -57,7 +58,9 @@ public:
                         const uint32_t num_buckets,
                         const SlabAllocContext& allocator_ctx,
                         const MemoryAllocContext<KeyT>& key_allocator_ctx,
-                        const MemoryAllocContext<ValueT>& value_allocator_ctx);
+                        const MemoryAllocContext<ValueT>& value_allocator_ctx,
+                        const MemoryAllocContext<thrust::pair<KeyT, ValueT>>&
+                                pair_allocator_ctx);
 
     /* Core SIMT operations */
     __device__ void InsertPair(bool& lane_active,
@@ -117,6 +120,7 @@ private:
     SlabAllocContext slab_list_allocator_ctx_;
     MemoryAllocContext<KeyT> key_allocator_ctx_;
     MemoryAllocContext<ValueT> value_allocator_ctx_;
+    MemoryAllocContext<thrust::pair<KeyT, ValueT>> pair_allocator_ctx_;
 };
 
 /*
@@ -134,6 +138,8 @@ private:
     SlabHashContext<KeyT, ValueT, HashFunc> gpu_context_;
     std::shared_ptr<MemoryAlloc<KeyT>> key_allocator_;
     std::shared_ptr<MemoryAlloc<ValueT>> value_allocator_;
+    std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>> pair_allocator_;
+
     std::shared_ptr<SlabAlloc> slab_list_allocator_;
 
     uint32_t device_idx_;
@@ -143,6 +149,8 @@ public:
              const std::shared_ptr<SlabAlloc>& slab_list_allocator,
              const std::shared_ptr<MemoryAlloc<KeyT>>& key_allocator,
              const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
+             const std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>>&
+                     pair_allocator,
              uint32_t device_idx);
 
     ~SlabHash();
