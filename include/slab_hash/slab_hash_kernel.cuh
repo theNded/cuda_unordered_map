@@ -143,14 +143,14 @@ __global__ void bucket_count_kernel(
             *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id);
 
     count += __popc(
-            __ballot_sync(REGULAR_NODE_KEY_MASK, src_unit_data != EMPTY_KEY));
+            __ballot_sync(PAIR_PTR_LANES_MASK, src_unit_data != EMPTY_PAIR_PTR));
     uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
 
-    while (next != EMPTY_SLAB_POINTER) {
+    while (next != EMPTY_SLAB_PTR) {
         src_unit_data =
                 *slab_hash_ctx.get_unit_ptr_from_list_nodes(next, lane_id);
-        count += __popc(__ballot_sync(REGULAR_NODE_KEY_MASK,
-                                      src_unit_data != EMPTY_KEY));
+        count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK,
+                                      src_unit_data != EMPTY_PAIR_PTR));
         next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
     }
     // writing back the results:

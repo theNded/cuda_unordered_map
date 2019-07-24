@@ -18,13 +18,13 @@
 #include "../helper_cuda.h"
 #include "config.h"
 
-#define CUDA_DEBUG_ENABLE_ASSERTION
+#define CUDA_DEBUG_ENABLE_ASSERTION_
 template <typename T>
 class MemoryAllocContext {
 public:
-    T *data_;              /* [N] */
-    internal_ptr_t *heap_; /* [N] */
-    int *heap_counter_;    /* [1] */
+    T *data_;           /* [N] */
+    ptr_t *heap_;       /* [N] */
+    int *heap_counter_; /* [1] */
 
 public:
     int max_capacity_;
@@ -46,8 +46,7 @@ public:
      *  1                   1 <-                 1                    0 <- |
      *  0 <- heap_counter   0                    0                    0
      */
-
-    __device__ addr_t Allocate() {
+    __device__ ptr_t Allocate() {
         int index = atomicAdd(heap_counter_, 1);
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
         assert(index < max_capacity_);
@@ -55,33 +54,26 @@ public:
         return heap_[index];
     }
 
-    __device__ void Free(addr_t addr) {
+    __device__ void Free(ptr_t ptr) {
         int index = atomicSub(heap_counter_, 1);
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
         assert(index >= 1);
 #endif
-        heap_[index - 1] = addr;
+        heap_[index - 1] = ptr;
     }
 
-    __device__ addr_t &addr_on_heap(size_t index) {
-#ifdef CUDA_DEBUG_ENABLE_ASSERTION
-        assert(index < max_capacity_);
-#endif
-        return heap_[index];
-    }
-
-    __device__ T &value_at(addr_t addr) {
+    __device__ T &extract(ptr_t ptr) {
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
         assert(addr < max_capacity_);
 #endif
-        return data_[addr];
+        return data_[ptr];
     }
 
-    __device__ const T &value_at(addr_t addr) const {
+    __device__ const T &extract(ptr_t ptr) const {
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
         assert(addr < max_capacity_);
 #endif
-        return data_[addr];
+        return data_[ptr];
     }
 };
 
@@ -89,8 +81,8 @@ template <typename T>
 __global__ void ResetMemoryAllocKernel(MemoryAllocContext<T> ctx) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < ctx.max_capacity_) {
-        ctx.value_at(i) = T(); /* This is not required. */
-        ctx.addr_on_heap(i) = i;
+        ctx.data_[i] = T(); /* This is not required. */
+        ctx.heap_[i] = i;
     }
 }
 

@@ -24,9 +24,8 @@
 #include "../memory_alloc/slab_alloc.h"
 
 struct Slab {
-    internal_ptr_t data[30];
-    slab_ptr_t next_slab_ptr;
-    uint32_t padding;
+    ptr_t pair_ptrs[31];
+    ptr_t next_slab_ptr;
 };
 
 /*
@@ -94,20 +93,20 @@ public:
         return slab_list_allocator_ctx_;
     }
 
-    __device__ __forceinline__ uint32_t* get_unit_ptr_from_list_nodes(
-            const slab_ptr_t slab_ptr, const uint32_t lane_id) {
+    __device__ __forceinline__ ptr_t* get_unit_ptr_from_list_nodes(
+            const ptr_t slab_ptr, const uint32_t lane_id) {
         return slab_list_allocator_ctx_.get_unit_ptr_from_slab(slab_ptr,
                                                                lane_id);
     }
-    __device__ __forceinline__ uint32_t* get_unit_ptr_from_list_head(
+    __device__ __forceinline__ ptr_t* get_unit_ptr_from_list_head(
             const uint32_t bucket_id, const uint32_t lane_id) {
         return reinterpret_cast<uint32_t*>(bucket_list_head_) +
                bucket_id * BASE_UNIT_SIZE + lane_id;
     }
 
 private:
-    __device__ __forceinline__ slab_ptr_t AllocateSlab(const uint32_t lane_id);
-    __device__ __forceinline__ void FreeSlab(const slab_ptr_t slab_ptr);
+    __device__ __forceinline__ ptr_t AllocateSlab(const uint32_t lane_id);
+    __device__ __forceinline__ void FreeSlab(const ptr_t slab_ptr);
 
 private:
     uint32_t num_buckets_;
