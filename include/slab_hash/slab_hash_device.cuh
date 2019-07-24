@@ -21,19 +21,19 @@
 // fixed known parameters:
 template <typename KeyT, typename ValueT, typename HashFunc>
 SlabHashContext<KeyT, ValueT, HashFunc>::SlabHashContext()
-    : num_buckets_(0), d_table_(nullptr) {
+    : num_buckets_(0), bucket_list_head_(nullptr) {
     // a single slab on a ConcurrentMap should be 128 bytes
     assert(sizeof(ConcurrentSlab) == (WARP_WIDTH * sizeof(uint32_t)));
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
 __host__ void SlabHashContext<KeyT, ValueT, HashFunc>::Init(
-        int8_t* d_table,
+        int8_t* bucket_list_head,
         const uint32_t num_buckets,
         const SlabAllocContext& allocator_ctx,
         const MemoryAllocContext<KeyT>& key_allocator_ctx,
         const MemoryAllocContext<ValueT>& value_allocator_ctx) {
-    d_table_ = reinterpret_cast<ConcurrentSlab*>(d_table);
+    bucket_list_head_ = reinterpret_cast<ConcurrentSlab*>(bucket_list_head);
 
     num_buckets_ = num_buckets;
     slab_list_allocator_ctx_ = allocator_ctx;
@@ -91,17 +91,18 @@ SlabHashContext<KeyT, ValueT, HashFunc>::getAllocatorContext() {
 
 template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ uint32_t*
-SlabHashContext<KeyT, ValueT, HashFunc>::getPointerFromSlab(
+SlabHashContext<KeyT, ValueT, HashFunc>::get_unit_ptr_from_list_nodes(
         const addr_t& slab_address, const uint32_t lane_id) {
-    return slab_list_allocator_ctx_.getPointerFromSlab(slab_address, lane_id);
+    return slab_list_allocator_ctx_.get_unit_ptr_from_slab(slab_address,
+                                                           lane_id);
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ __forceinline__ uint32_t*
-SlabHashContext<KeyT, ValueT, HashFunc>::getPointerFromBucket(
+SlabHashContext<KeyT, ValueT, HashFunc>::get_unit_ptr_from_list_head(
         const uint32_t bucket_id, const uint32_t lane_id) {
-    return reinterpret_cast<uint32_t*>(d_table_) + bucket_id * BASE_UNIT_SIZE +
-           lane_id;
+    return reinterpret_cast<uint32_t*>(bucket_list_head_) +
+           bucket_id * BASE_UNIT_SIZE + lane_id;
 }
 
 // this function should be operated in a warp-wide fashion
@@ -149,8 +150,9 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
         /* Each lane in the warp reads a uint in the slab in parallel */
         const uint32_t unit_data =
                 (curr_slab_ptr == HEAD_SLAB_POINTER)
-                        ? *(getPointerFromBucket(src_bucket, lane_id))
-                        : *(getPointerFromSlab(curr_slab_ptr, lane_id));
+                        ? *(get_unit_ptr_from_list_head(src_bucket, lane_id))
+                        : *(get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                         lane_id));
 
         int32_t lane_found = WarpFindKey(src_key, lane_id, unit_data);
 
@@ -236,8 +238,9 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
         /* Each lane in the warp reads a uint in the slab */
         uint32_t unit_data =
                 (curr_slab_ptr == HEAD_SLAB_POINTER)
-                        ? *(getPointerFromBucket(src_bucket, lane_id))
-                        : *(getPointerFromSlab(curr_slab_ptr, lane_id));
+                        ? *(get_unit_ptr_from_list_head(src_bucket, lane_id))
+                        : *(get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                         lane_id));
 
         int32_t lane_found = WarpFindKey(src_key, lane_id, unit_data);
         int32_t lane_empty = WarpFindEmpty(unit_data);
@@ -257,8 +260,10 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
                 // TODO: check why we cannot put malloc here
                 const uint32_t* p =
                         (curr_slab_ptr == HEAD_SLAB_POINTER)
-                                ? getPointerFromBucket(src_bucket, lane_empty)
-                                : getPointerFromSlab(curr_slab_ptr, lane_empty);
+                                ? get_unit_ptr_from_list_head(src_bucket,
+                                                              lane_empty)
+                                : get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                               lane_empty);
 
                 uint64_t old_key_value_pair = atomicCAS(
                         (unsigned long long int*)p, EMPTY_PAIR_64,
@@ -303,10 +308,10 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
                 if (lane_id == NEXT_SLAB_POINTER_LANE) {
                     const uint32_t* p =
                             (curr_slab_ptr == HEAD_SLAB_POINTER)
-                                    ? getPointerFromBucket(
+                                    ? get_unit_ptr_from_list_head(
                                               src_bucket,
                                               NEXT_SLAB_POINTER_LANE)
-                                    : getPointerFromSlab(
+                                    : get_unit_ptr_from_list_nodes(
                                               curr_slab_ptr,
                                               NEXT_SLAB_POINTER_LANE);
 
@@ -353,8 +358,9 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Delete(
 
         const uint32_t unit_data =
                 (curr_slab_ptr == HEAD_SLAB_POINTER)
-                        ? *(getPointerFromBucket(src_bucket, lane_id))
-                        : *(getPointerFromSlab(curr_slab_ptr, lane_id));
+                        ? *(get_unit_ptr_from_list_head(src_bucket, lane_id))
+                        : *(get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                         lane_id));
 
         int32_t lane_found = WarpFindKey(src_key, lane_id, unit_data);
 
@@ -365,10 +371,11 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Delete(
             uint32_t src_value_addr = __shfl_sync(ACTIVE_LANE_MASK, unit_data,
                                                   lane_found + 1, WARP_WIDTH);
             if (lane_id == src_lane) {
-                uint32_t* p =
-                        (curr_slab_ptr == HEAD_SLAB_POINTER)
-                                ? getPointerFromBucket(src_bucket, lane_found)
-                                : getPointerFromSlab(curr_slab_ptr, lane_found);
+                uint32_t* p = (curr_slab_ptr == HEAD_SLAB_POINTER)
+                                      ? get_unit_ptr_from_list_head(src_bucket,
+                                                                    lane_found)
+                                      : get_unit_ptr_from_list_nodes(
+                                                curr_slab_ptr, lane_found);
                 uint64_t key_value_pair_to_delete =
                         *reinterpret_cast<unsigned long long int*>(p);
 

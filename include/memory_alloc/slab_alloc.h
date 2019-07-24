@@ -77,7 +77,7 @@ public:
         hash_coef_ = hash_coef;
     }
 
-    __device__ __forceinline__ uint32_t* getPointerFromSlab(
+    __device__ __forceinline__ uint32_t* get_unit_ptr_from_slab(
             const addr_t& next, const uint32_t& lane_id) {
         return super_blocks_ + addressDecoder(next) + lane_id;
     }

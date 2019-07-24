@@ -139,14 +139,16 @@ __global__ void bucket_count_kernel(
 
     uint32_t count = 0;
 
-    uint32_t src_unit_data = *slab_hash_ctx.getPointerFromBucket(wid, lane_id);
+    uint32_t src_unit_data =
+            *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id);
 
     count += __popc(
             __ballot_sync(REGULAR_NODE_KEY_MASK, src_unit_data != EMPTY_KEY));
     uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
 
     while (next != EMPTY_SLAB_POINTER) {
-        src_unit_data = *slab_hash_ctx.getPointerFromSlab(next, lane_id);
+        src_unit_data =
+                *slab_hash_ctx.get_unit_ptr_from_list_nodes(next, lane_id);
         count += __popc(__ballot_sync(REGULAR_NODE_KEY_MASK,
                                       src_unit_data != EMPTY_KEY));
         next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);

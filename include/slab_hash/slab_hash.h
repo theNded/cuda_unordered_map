@@ -37,7 +37,7 @@ struct ConcurrentSlab {
 /*
  * This is the main class that will be shallowly copied into the device to be
  * used at runtime. This class does not own the allocated memory on the gpu
- * (i.e., d_table_)
+ * (i.e., bucket_list_head_)
  */
 
 template <typename Key>
@@ -58,7 +58,7 @@ template <typename KeyT, typename ValueT, typename HashFunc>
 class SlabHashContext {
 public:
     SlabHashContext();
-    __host__ void Init(int8_t* d_table,
+    __host__ void Init(int8_t* bucket_list_head,
                        const uint32_t num_buckets,
                        const SlabAllocContext& allocator_ctx,
                        const MemoryAllocContext<KeyT>& key_allocator_ctx,
@@ -96,9 +96,10 @@ public:
     __device__ __forceinline__ int32_t WarpFindEmpty(const uint32_t unit_data);
 
     __device__ __host__ __forceinline__ SlabAllocContext& getAllocatorContext();
-    __device__ __forceinline__ uint32_t* getPointerFromSlab(
+
+    __device__ __forceinline__ uint32_t* get_unit_ptr_from_list_nodes(
             const addr_t& slab_address, const uint32_t lane_id);
-    __device__ __forceinline__ uint32_t* getPointerFromBucket(
+    __device__ __forceinline__ uint32_t* get_unit_ptr_from_list_head(
             const uint32_t bucket_id, const uint32_t lane_id);
 
 private:
@@ -109,7 +110,7 @@ private:
     uint32_t num_buckets_;
     HashFunc hash_fn_;
 
-    ConcurrentSlab* d_table_;
+    ConcurrentSlab* bucket_list_head_;
     SlabAllocContext slab_list_allocator_ctx_;
     MemoryAllocContext<KeyT> key_allocator_ctx_;
     MemoryAllocContext<ValueT> value_allocator_ctx_;
@@ -125,7 +126,7 @@ private:
 
     uint32_t num_buckets_;
 
-    int8_t* d_table_;
+    int8_t* bucket_list_head_;
 
     SlabHashContext<KeyT, ValueT, HashFunc> gpu_context_;
     std::shared_ptr<MemoryAlloc<KeyT>> key_allocator_;

@@ -31,7 +31,7 @@ SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
       key_allocator_(key_allocator),
       value_allocator_(value_allocator),
       device_idx_(device_idx),
-      d_table_(nullptr) {
+      bucket_list_head_(nullptr) {
     assert(slab_list_allocator && key_allocator &&
            "No proper dynamic allocator attached to the slab hash.");
 
@@ -42,19 +42,19 @@ SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
     CHECK_CUDA(cudaSetDevice(device_idx_));
 
     // allocating initial buckets:
-    CHECK_CUDA(cudaMalloc(&d_table_, sizeof(ConcurrentSlab) * num_buckets_));
+    CHECK_CUDA(cudaMalloc(&bucket_list_head_, sizeof(ConcurrentSlab) * num_buckets_));
     CHECK_CUDA(
-            cudaMemset(d_table_, 0xFF, sizeof(ConcurrentSlab) * num_buckets_));
+            cudaMemset(bucket_list_head_, 0xFF, sizeof(ConcurrentSlab) * num_buckets_));
 
     gpu_context_.Init(
-            d_table_, num_buckets_, slab_list_allocator_->getContext(),
+            bucket_list_head_, num_buckets_, slab_list_allocator_->getContext(),
             key_allocator_->gpu_context_, value_allocator_->gpu_context_);
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
 SlabHash<KeyT, ValueT, HashFunc>::~SlabHash() {
     CHECK_CUDA(cudaSetDevice(device_idx_));
-    CHECK_CUDA(cudaFree(d_table_));
+    CHECK_CUDA(cudaFree(bucket_list_head_));
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
