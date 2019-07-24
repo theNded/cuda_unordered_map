@@ -54,14 +54,12 @@ CoordinateHashMap<KeyT, ValueT, HashFunc>::CoordinateHashMap(
     CHECK_CUDA(cudaEventCreate(&stop_));
 
     // allocate an initialize the allocator:
-    key_allocator_ = std::make_shared<MemoryAlloc<KeyT>>(max_keys_);
-    value_allocator_ = std::make_shared<MemoryAlloc<ValueT>>(max_keys_);
     pair_allocator_ = std::make_shared<MemoryAlloc<thrust::pair<KeyT, ValueT>>>(
             max_keys_);
     slab_list_allocator_ = std::make_shared<SlabAlloc>();
     slab_hash_ = std::make_shared<SlabHash<KeyT, ValueT, HashFunc>>(
-            num_buckets_, slab_list_allocator_, key_allocator_,
-            value_allocator_, pair_allocator_, cuda_device_idx_);
+            num_buckets_, slab_list_allocator_, pair_allocator_,
+            cuda_device_idx_);
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>

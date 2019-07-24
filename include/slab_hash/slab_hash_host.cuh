@@ -23,19 +23,15 @@ template <typename KeyT, typename ValueT, typename HashFunc>
 SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
         const uint32_t num_buckets,
         const std::shared_ptr<SlabAlloc>& slab_list_allocator,
-        const std::shared_ptr<MemoryAlloc<KeyT>>& key_allocator,
-        const std::shared_ptr<MemoryAlloc<ValueT>>& value_allocator,
         const std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>>&
                 pair_allocator,
         uint32_t device_idx)
     : num_buckets_(num_buckets),
       slab_list_allocator_(slab_list_allocator),
-      key_allocator_(key_allocator),
-      value_allocator_(value_allocator),
       pair_allocator_(pair_allocator),
       device_idx_(device_idx),
       bucket_list_head_(nullptr) {
-    assert(slab_list_allocator && key_allocator &&
+    assert(slab_list_allocator && pair_allocator &&
            "No proper dynamic allocator attached to the slab hash.");
 
     int32_t devCount = 0;
@@ -49,10 +45,9 @@ SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
     CHECK_CUDA(
             cudaMemset(bucket_list_head_, 0xFF, sizeof(Slab) * num_buckets_));
 
-    gpu_context_.Setup(
-            bucket_list_head_, num_buckets_, slab_list_allocator_->getContext(),
-            key_allocator_->gpu_context_, value_allocator_->gpu_context_,
-            pair_allocator_->gpu_context_);
+    gpu_context_.Setup(bucket_list_head_, num_buckets_,
+                       slab_list_allocator_->getContext(),
+                       pair_allocator_->gpu_context_);
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
