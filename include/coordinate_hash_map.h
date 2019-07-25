@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <thrust/device_vector.h>
 #include "slab_hash/slab_hash.h"
 
 /* Lightweight wrapper to handle host input */
@@ -34,27 +35,31 @@ public:
                       const uint32_t device_idx = 0);
     ~CoordinateHashMap();
 
-    float Insert(const std::vector<KeyT>& keys,
-                 const std::vector<ValueT>& values);
-    /* query_values[i] is undefined (basically ValueT(0)) if mask[i] == 0 */
-    float Search(const std::vector<KeyT>& query_keys,
-                 std::vector<ValueT>& query_values,
-                 std::vector<uint8_t>& mask);
-    float Delete(const std::vector<KeyT>& keys);
-
     /* We assert all memory buffers are allocated prior to the function call
          @keys_device stores keys in KeyT[num_keys x D],
          @[query]_values_device stores keys in ValueT[num_keys] */
+    /* query_values[i] is undefined (basically ValueT(0)) if mask[i] == 0 */
+
+    float Insert(thrust::device_vector<KeyT>& keys,
+                 thrust::device_vector<ValueT>& values);
+    float Insert(const std::vector<KeyT>& keys,
+                 const std::vector<ValueT>& values);
     float Insert(KeyT* keys_device, ValueT* values_device, int num_keys);
+
+    float Search(thrust::device_vector<KeyT>& query_keys,
+                 thrust::device_vector<ValueT>& query_values,
+                 thrust::device_vector<uint8_t>& mask);
+    float Search(const std::vector<KeyT>& query_keys,
+                 std::vector<ValueT>& query_values,
+                 std::vector<uint8_t>& mask);
     float Search(KeyT* query_keys_device,
                  ValueT* query_values_device,
                  uint8_t* mask,
                  int num_keys);
-    float Delete(KeyT* keys, int num_keys);
 
-    /* Similar to Insert, but we won't assign value for them;
-     * it's more like 'reserve' */
-    float Allocate(const std::vector<KeyT>& keys);
+    float Delete(thrust::device_vector<KeyT>& keys);
+    float Delete(const std::vector<KeyT>& keys);
+    float Delete(KeyT* keys, int num_keys);
 
     float ComputeLoadFactor(int flag = 0);
 

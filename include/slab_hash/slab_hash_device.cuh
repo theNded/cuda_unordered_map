@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <thrust/device_ptr.h>
 #include "slab_hash.h"
 
 // fixed known parameters:
@@ -135,6 +136,9 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
                     ACTIVE_LANES_MASK, unit_data, lane_found, WARP_WIDTH);
 
             if (lane_id == src_lane) {
+                thrust::device_ptr<thrust::pair<KeyT, ValueT>> iterator(
+                        &pair_allocator_ctx_.extract(found_pair_internal_ptr));
+
                 found_value =
                         pair_allocator_ctx_.extract(found_pair_internal_ptr)
                                 .second;

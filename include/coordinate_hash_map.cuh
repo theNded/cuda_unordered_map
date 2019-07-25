@@ -100,6 +100,25 @@ float CoordinateHashMap<KeyT, ValueT, HashFunc>::Insert(
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
+float CoordinateHashMap<KeyT, ValueT, HashFunc>::Insert(
+        thrust::device_vector<KeyT>& keys,
+        thrust::device_vector<ValueT>& values) {
+    float time;
+    assert(values.size() == keys.size());
+
+    CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
+    CHECK_CUDA(cudaEventRecord(start_, 0));
+
+    slab_hash_->Insert(thrust::raw_pointer_cast(keys.data()),
+                       thrust::raw_pointer_cast(values.data()), keys.size());
+
+    CHECK_CUDA(cudaEventRecord(stop_, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop_));
+    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
+    return time;
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
 float CoordinateHashMap<KeyT, ValueT, HashFunc>::Insert(KeyT* keys,
                                                         ValueT* values,
                                                         int num_keys) {
@@ -151,6 +170,28 @@ float CoordinateHashMap<KeyT, ValueT, HashFunc>::Search(
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
+float CoordinateHashMap<KeyT, ValueT, HashFunc>::Search(
+        thrust::device_vector<KeyT>& query_keys,
+        thrust::device_vector<ValueT>& query_values,
+        thrust::device_vector<uint8_t>& mask) {
+    float time;
+    CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
+
+    thrust::fill(mask.begin(), mask.end(), 0);
+    CHECK_CUDA(cudaEventRecord(start_, 0));
+
+    slab_hash_->Search(thrust::raw_pointer_cast(query_keys.data()),
+                       thrust::raw_pointer_cast(query_values.data()),
+                       thrust::raw_pointer_cast(mask.data()),
+                       query_keys.size());
+
+    CHECK_CUDA(cudaEventRecord(stop_, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop_));
+    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
+    return time;
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
 float CoordinateHashMap<KeyT, ValueT, HashFunc>::Search(KeyT* query_keys,
                                                         ValueT* query_values,
                                                         uint8_t* mask,
@@ -183,6 +224,21 @@ float CoordinateHashMap<KeyT, ValueT, HashFunc>::Delete(
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
     CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
+    return time;
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+float CoordinateHashMap<KeyT, ValueT, HashFunc>::Delete(
+        thrust::device_vector<KeyT>& keys) {
+    float time;
+    CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
+    CHECK_CUDA(cudaEventRecord(start_, 0));
+
+    slab_hash_->Delete(thrust::raw_pointer_cast(keys.data()), keys.size());
+    CHECK_CUDA(cudaEventRecord(stop_, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop_));
+    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
+
     return time;
 }
 
