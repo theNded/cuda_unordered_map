@@ -97,10 +97,6 @@ private:
     ValueT* query_value_buffer_;
     uint8_t* query_result_buffer_;
 
-    /* Context manager */
-    std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>> pair_allocator_;
-    std::shared_ptr<SlabAlloc> slab_list_allocator_;
-
     std::shared_ptr<SlabHash<KeyT, ValueT, HashFunc>> slab_hash_;
 };
 
@@ -110,10 +106,7 @@ UnorderedMap<KeyT, ValueT, HashFunc>::UnorderedMap(
         uint32_t keys_per_bucket,
         float expected_occupancy_per_bucket,
         const uint32_t device_idx)
-    : max_keys_(max_keys),
-      cuda_device_idx_(device_idx),
-      slab_hash_(nullptr),
-      slab_list_allocator_(nullptr) {
+    : max_keys_(max_keys), cuda_device_idx_(device_idx), slab_hash_(nullptr) {
     /* Set bucket size */
     uint32_t expected_keys_per_bucket =
             expected_occupancy_per_bucket * keys_per_bucket;
@@ -137,12 +130,8 @@ UnorderedMap<KeyT, ValueT, HashFunc>::UnorderedMap(
     CHECK_CUDA(cudaEventCreate(&stop_));
 
     // allocate an initialize the allocator:
-    pair_allocator_ = std::make_shared<MemoryAlloc<thrust::pair<KeyT, ValueT>>>(
-            max_keys_);
-    slab_list_allocator_ = std::make_shared<SlabAlloc>();
     slab_hash_ = std::make_shared<SlabHash<KeyT, ValueT, HashFunc>>(
-            num_buckets_, slab_list_allocator_, pair_allocator_,
-            cuda_device_idx_);
+            num_buckets_, max_keys_, cuda_device_idx_);
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>

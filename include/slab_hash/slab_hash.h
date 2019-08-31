@@ -38,10 +38,8 @@ class SlabHashContext;
 template <typename KeyT, typename ValueT, typename HashFunc>
 class SlabHash {
 public:
-    SlabHash(const uint32_t num_buckets,
-             const std::shared_ptr<SlabAlloc>& slab_list_allocator,
-             const std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>>&
-                     pair_allocator,
+    SlabHash(const uint32_t max_bucket_count,
+             const uint32_t max_keyvalue_count,
              uint32_t device_idx);
 
     ~SlabHash();
@@ -651,24 +649,20 @@ __global__ void compute_stats_allocators(
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
-SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
-        const uint32_t num_buckets,
-        const std::shared_ptr<SlabAlloc>& slab_list_allocator,
-        const std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>>&
-                pair_allocator,
-        uint32_t device_idx)
-    : num_buckets_(num_buckets),
-      slab_list_allocator_(slab_list_allocator),
-      pair_allocator_(pair_allocator),
+SlabHash<KeyT, ValueT, HashFunc>::SlabHash(const uint32_t max_bucket_count,
+                                           const uint32_t max_keyvalue_count,
+                                           uint32_t device_idx)
+    : num_buckets_(max_bucket_count),
       device_idx_(device_idx),
       bucket_list_head_(nullptr) {
-    assert(slab_list_allocator && pair_allocator &&
-           "No proper dynamic allocator attached to the slab hash.");
+    // allocate an initialize the allocator:
+    pair_allocator_ = std::make_shared<MemoryAlloc<thrust::pair<KeyT, ValueT>>>(
+            max_keyvalue_count);
+    slab_list_allocator_ = std::make_shared<SlabAlloc>();
 
-    int32_t devCount = 0;
-    CHECK_CUDA(cudaGetDeviceCount(&devCount));
-    assert(device_idx_ < devCount);
-
+    int32_t device_count = 0;
+    CHECK_CUDA(cudaGetDeviceCount(&device_count));
+    assert(device_idx_ < device_count);
     CHECK_CUDA(cudaSetDevice(device_idx_));
 
     // allocating initial buckets:
