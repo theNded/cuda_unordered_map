@@ -28,25 +28,6 @@ struct Slab {
     ptr_t next_slab_ptr;
 };
 
-/*
- * This is the main class that will be shallowly copied into the device to be
- * used at runtime. This class does not own the allocated memory on the gpu
- * (i.e., bucket_list_head_)
- */
-template <typename Key>
-struct hash {
-    __device__ __host__ uint64_t operator()(const Key& key) const {
-        uint64_t hash = UINT64_C(14695981039346656037);
-
-        const int chunks = sizeof(Key) / sizeof(int);
-        for (size_t i = 0; i < chunks; ++i) {
-            hash ^= ((int32_t*)(&key))[i];
-            hash *= UINT64_C(1099511628211);
-        }
-        return hash;
-    }
-};
-
 template <typename KeyT, typename ValueT, typename HashFunc>
 class SlabHashContext {
 public:
@@ -58,11 +39,11 @@ public:
                                 pair_allocator_ctx);
 
     /* Core SIMT operations */
-    __device__ void InsertPair(bool& lane_active,
-                               const uint32_t lane_id,
-                               const uint32_t bucket_id,
-                               const KeyT& key,
-                               const ValueT& value);
+    __device__ void Insert(bool& lane_active,
+                           const uint32_t lane_id,
+                           const uint32_t bucket_id,
+                           const KeyT& key,
+                           const ValueT& value);
 
     __device__ void Search(bool& lane_active,
                            const uint32_t lane_id,
@@ -71,7 +52,7 @@ public:
                            ValueT& value,
                            uint8_t& found);
 
-    __device__ void Delete(bool& lane_active,
+    __device__ void Remove(bool& lane_active,
                            const uint32_t lane_id,
                            const uint32_t bucket_id,
                            const KeyT& key);
@@ -116,8 +97,6 @@ private:
     MemoryAllocContext<thrust::pair<KeyT, ValueT>> pair_allocator_ctx_;
 };
 
-
-/** Raw pointer interfaces **/
 template <typename KeyT, typename ValueT, typename HashFunc>
 class SlabHash {
 private:
@@ -150,11 +129,12 @@ public:
                 ValueT* values,
                 uint8_t* founds,
                 uint32_t num_queries);
-    void Delete(KeyT* keys, uint32_t num_keys);
+    void Remove(KeyT* keys, uint32_t num_keys);
 };
 
-
-
+/**
+ * Device code wrapper
+ **/
 template <typename KeyT, typename ValueT, typename HashFunc>
 SlabHashContext<KeyT, ValueT, HashFunc>::SlabHashContext()
     : num_buckets_(0), bucket_list_head_(nullptr) {
@@ -228,9 +208,6 @@ SlabHashContext<KeyT, ValueT, HashFunc>::FreeSlab(const ptr_t slab_ptr) {
     slab_list_allocator_ctx_.FreeUntouched(slab_ptr);
 }
 
-//================================================
-// Individual Search Unit:
-//================================================
 template <typename KeyT, typename ValueT, typename HashFunc>
 __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
         bool& to_search,
@@ -306,15 +283,12 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
 }
 
 /*
- * each thread inserts a key-value pair into the hash table
- * it is assumed all threads within a warp are present and collaborating with
- * each other with a warp-cooperative work sharing (WCWS) strategy.
- * InsertPair: ABORT if found
+ * Insert: ABORT if found
  * replacePair: REPLACE if found
  * WE DO NOT ALLOW DUPLICATE KEYS
  */
 template <typename KeyT, typename ValueT, typename HashFunc>
-__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
+__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Insert(
         bool& to_be_inserted,
         const uint32_t lane_id,
         const uint32_t bucket_id,
@@ -435,7 +409,7 @@ __device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
-__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Delete(
+__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Remove(
         bool& to_be_deleted,
         const uint32_t lane_id,
         const uint32_t bucket_id,
@@ -571,11 +545,11 @@ __global__ void InsertKernel(
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    slab_hash_ctx.InsertPair(lane_active, lane_id, bucket_id, key, value);
+    slab_hash_ctx.Insert(lane_active, lane_id, bucket_id, key, value);
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
-__global__ void DeleteKernel(
+__global__ void RemoveKernel(
         SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx,
         KeyT* keys,
         uint32_t num_keys) {
@@ -598,7 +572,7 @@ __global__ void DeleteKernel(
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    slab_hash_ctx.Delete(lane_active, lane_id, bucket_id, key);
+    slab_hash_ctx.Remove(lane_active, lane_id, bucket_id, key);
 }
 
 /*
@@ -628,8 +602,8 @@ __global__ void bucket_count_kernel(
     uint32_t src_unit_data =
             *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id);
 
-    count += __popc(
-            __ballot_sync(PAIR_PTR_LANES_MASK, src_unit_data != EMPTY_PAIR_PTR));
+    count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK,
+                                  src_unit_data != EMPTY_PAIR_PTR));
     uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
 
     while (next != EMPTY_SLAB_PTR) {
@@ -731,10 +705,10 @@ void SlabHash<KeyT, ValueT, HashFunc>::Search(KeyT* keys,
 }
 
 template <typename KeyT, typename ValueT, typename HashFunc>
-void SlabHash<KeyT, ValueT, HashFunc>::Delete(KeyT* keys, uint32_t num_keys) {
+void SlabHash<KeyT, ValueT, HashFunc>::Remove(KeyT* keys, uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    DeleteKernel<KeyT, ValueT, HashFunc>
+    RemoveKernel<KeyT, ValueT, HashFunc>
             <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, num_keys);
 }
 

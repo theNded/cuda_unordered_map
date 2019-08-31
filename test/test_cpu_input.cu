@@ -180,7 +180,7 @@ public:
 
 int TestInsert(TestDataHelperCPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyTD, ValueT, HashFunc> hash_table(
+    UnorderedMap<KeyTD, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -206,9 +206,9 @@ int TestInsert(TestDataHelperCPU &data_generator) {
     return 0;
 }
 
-int TestDelete(TestDataHelperCPU &data_generator) {
+int TestRemove(TestDataHelperCPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyTD, ValueT, HashFunc> hash_table(
+    UnorderedMap<KeyTD, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -231,8 +231,8 @@ int TestDelete(TestDataHelperCPU &data_generator) {
             query_data_gt.masks);
     if (!query_correct) return -1;
 
-    /** Delete everything **/
-    time = hash_table.Delete(query_data.keys);
+    /** Remove everything **/
+    time = hash_table.Remove(query_data.keys);
     printf("3) Hash table deleted in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
@@ -256,7 +256,7 @@ int TestDelete(TestDataHelperCPU &data_generator) {
 
 int TestConflict(TestDataHelperCPU &data_generator) {
     float time;
-    CoordinateHashMap<KeyTD, ValueT, HashFunc> hash_table(
+    UnorderedMap<KeyTD, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -305,7 +305,7 @@ int TestConflict(TestDataHelperCPU &data_generator) {
 int main() {
     const int key_value_pool_size = 1 << 20;
     const float existing_ratio = 0.6f;
-    CoordinateHashMap<KeyTD, ValueT, HashFunc> hash_table(
+    UnorderedMap<KeyTD, ValueT, HashFunc> hash_table(
             key_value_pool_size);
 
     auto data_generator =
@@ -317,8 +317,8 @@ int main() {
 
     printf(">>> Test sequence: insert (all valid) -> query -> delete -> "
            "query\n");
-    assert(!TestDelete(data_generator) && "TestDelete failed.\n");
-    printf("TestDelete passed.\n");
+    assert(!TestRemove(data_generator) && "TestRemove failed.\n");
+    printf("TestRemove passed.\n");
 
     printf(">>> Test sequence: insert (all valid) -> query -> insert (all "
            "valid, duplicate) -> query\n");

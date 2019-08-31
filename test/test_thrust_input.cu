@@ -234,7 +234,7 @@ public:
 
 int TestInsert(TestDataHelperThrust &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, ValueT> hash_table(data_generator.keys_pool_size_);
+    UnorderedMap<KeyT, ValueT> hash_table(data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
             data_generator.keys_pool_size_ / 2, 0.4f);
@@ -262,9 +262,9 @@ int TestInsert(TestDataHelperThrust &data_generator) {
     return 0;
 }
 
-int TestDelete(TestDataHelperThrust &data_generator) {
+int TestRemove(TestDataHelperThrust &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, ValueT, HashFunc> hash_table(
+    UnorderedMap<KeyT, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -291,8 +291,8 @@ int TestDelete(TestDataHelperThrust &data_generator) {
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
     if (!query_correct) return -1;
 
-    /** Delete everything **/
-    time = hash_table.Delete(query_data_gpu.keys);
+    /** Remove everything **/
+    time = hash_table.Remove(query_data_gpu.keys);
     printf("3) Hash table deleted in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gpu.size) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
@@ -317,7 +317,7 @@ int TestDelete(TestDataHelperThrust &data_generator) {
 
 int TestConflict(TestDataHelperThrust &data_generator) {
     float time;
-    CoordinateHashMap<KeyT, ValueT, HashFunc> hash_table(
+    UnorderedMap<KeyT, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -383,8 +383,8 @@ int main() {
 
     printf(">>> Test sequence: insert (all valid) -> query -> delete -> "
            "query\n");
-    assert(!TestDelete(data_generator) && "TestDelete failed.\n");
-    printf("TestDelete passed.\n");
+    assert(!TestRemove(data_generator) && "TestRemove failed.\n");
+    printf("TestRemove passed.\n");
 
     printf(">>> Test sequence: insert (all valid) -> query -> insert (all "
            "valid, duplicate) -> query\n");
