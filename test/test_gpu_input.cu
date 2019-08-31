@@ -22,7 +22,7 @@
 #include <iostream>
 #include <random>
 #include <vector>
-#include "coordinate_hash_map.cuh"
+#include "unordered_map.h"
 #include "coordinate.h"
 
 constexpr size_t D = 7;
