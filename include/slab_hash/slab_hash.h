@@ -23,11 +23,51 @@
 #include "memory_alloc.h"
 #include "slab_alloc.h"
 
-struct Slab {
+/**
+ * Interface
+ **/
+class Slab {
+public:
     ptr_t pair_ptrs[31];
     ptr_t next_slab_ptr;
 };
 
+template <typename KeyT, typename ValueT, typename HashFunc>
+class SlabHashContext;
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+class SlabHash {
+public:
+    SlabHash(const uint32_t num_buckets,
+             const std::shared_ptr<SlabAlloc>& slab_list_allocator,
+             const std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>>&
+                     pair_allocator,
+             uint32_t device_idx);
+
+    ~SlabHash();
+
+    double ComputeLoadFactor(int flag);
+
+    void Insert(KeyT* keys, ValueT* values, uint32_t num_keys);
+    void Search(KeyT* keys, ValueT* values, uint8_t* founds, uint32_t num_keys);
+    void Remove(KeyT* keys, uint32_t num_keys);
+
+private:
+    uint32_t num_buckets_;
+
+    Slab* bucket_list_head_;
+
+    SlabHashContext<KeyT, ValueT, HashFunc> gpu_context_;
+
+    std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>> pair_allocator_;
+    std::shared_ptr<SlabAlloc> slab_list_allocator_;
+
+    uint32_t device_idx_;
+};
+
+/**
+ * Implementation
+ **/
 template <typename KeyT, typename ValueT, typename HashFunc>
 class SlabHashContext {
 public:
@@ -61,14 +101,6 @@ public:
     __device__ __host__ __forceinline__ uint32_t
     ComputeBucket(const KeyT& key) const;
 
-    __device__ __forceinline__ void WarpSyncKey(const KeyT& key,
-                                                const uint32_t lane_id,
-                                                KeyT& ret);
-    __device__ __forceinline__ int32_t WarpFindKey(const KeyT& src_key,
-                                                   const uint32_t lane_id,
-                                                   const uint32_t unit_data);
-    __device__ __forceinline__ int32_t WarpFindEmpty(const uint32_t unit_data);
-
     __device__ __host__ __forceinline__ SlabAllocContext& get_slab_alloc_ctx() {
         return slab_list_allocator_ctx_;
     }
@@ -85,6 +117,14 @@ public:
     }
 
 private:
+    __device__ __forceinline__ void WarpSyncKey(const KeyT& key,
+                                                const uint32_t lane_id,
+                                                KeyT& ret);
+    __device__ __forceinline__ int32_t WarpFindKey(const KeyT& src_key,
+                                                   const uint32_t lane_id,
+                                                   const uint32_t unit_data);
+    __device__ __forceinline__ int32_t WarpFindEmpty(const uint32_t unit_data);
+
     __device__ __forceinline__ ptr_t AllocateSlab(const uint32_t lane_id);
     __device__ __forceinline__ void FreeSlab(const ptr_t slab_ptr);
 
@@ -97,43 +137,8 @@ private:
     MemoryAllocContext<thrust::pair<KeyT, ValueT>> pair_allocator_ctx_;
 };
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-class SlabHash {
-private:
-    static constexpr uint32_t BLOCKSIZE_ = 128;
-
-    uint32_t num_buckets_;
-
-    Slab* bucket_list_head_;
-
-    SlabHashContext<KeyT, ValueT, HashFunc> gpu_context_;
-
-    std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>> pair_allocator_;
-    std::shared_ptr<SlabAlloc> slab_list_allocator_;
-
-    uint32_t device_idx_;
-
-public:
-    SlabHash(const uint32_t num_buckets,
-             const std::shared_ptr<SlabAlloc>& slab_list_allocator,
-             const std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>>&
-                     pair_allocator,
-             uint32_t device_idx);
-
-    ~SlabHash();
-
-    double ComputeLoadFactor(int flag);
-
-    void Insert(KeyT* keys, ValueT* values, uint32_t num_keys);
-    void Search(KeyT* keys,
-                ValueT* values,
-                uint8_t* founds,
-                uint32_t num_queries);
-    void Remove(KeyT* keys, uint32_t num_keys);
-};
-
 /**
- * Device code wrapper
+ * Definitions
  **/
 template <typename KeyT, typename ValueT, typename HashFunc>
 SlabHashContext<KeyT, ValueT, HashFunc>::SlabHashContext()

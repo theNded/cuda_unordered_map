@@ -29,6 +29,7 @@ static constexpr uint32_t SEARCH_NOT_FOUND = 0xFFFFFFFF;
 
 /** Warp operations **/
 static constexpr uint32_t WARP_WIDTH = 32;
+static constexpr uint32_t BLOCKSIZE_ = 128;
 
 /* bits:   31 | 30 | ... | 3 | 2 | 1 | 0 */
 static constexpr uint32_t ACTIVE_LANES_MASK = 0xFFFFFFFF;
