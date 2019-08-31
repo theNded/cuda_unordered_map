@@ -46,7 +46,7 @@ public:
                  const std::vector<ValueT>& values);
     float Insert(KeyT* keys_device, ValueT* values_device, int num_keys);
 
-    float Search(thrust::device_vector<KeyT>& query_keys,
+float Search(thrust::device_vector<KeyT>& query_keys,
                  thrust::device_vector<ValueT>& query_values,
                  thrust::device_vector<uint8_t>& mask);
     float Search(const std::vector<KeyT>& query_keys,

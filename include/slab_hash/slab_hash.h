@@ -20,8 +20,8 @@
 #include <cassert>
 #include <memory>
 
-#include "../memory_alloc/memory_alloc.h"
-#include "../memory_alloc/slab_alloc.h"
+#include "memory_alloc.h"
+#include "slab_alloc.h"
 
 struct Slab {
     ptr_t pair_ptrs[31];
@@ -33,7 +33,6 @@ struct Slab {
  * used at runtime. This class does not own the allocated memory on the gpu
  * (i.e., bucket_list_head_)
  */
-
 template <typename Key>
 struct hash {
     __device__ __host__ uint64_t operator()(const Key& key) const {
@@ -117,9 +116,8 @@ private:
     MemoryAllocContext<thrust::pair<KeyT, ValueT>> pair_allocator_ctx_;
 };
 
-/*
- * This class owns the allocated memory for the hash table
- */
+
+/** Raw pointer interfaces **/
 template <typename KeyT, typename ValueT, typename HashFunc>
 class SlabHash {
 private:
@@ -154,3 +152,652 @@ public:
                 uint32_t num_queries);
     void Delete(KeyT* keys, uint32_t num_keys);
 };
+
+
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+SlabHashContext<KeyT, ValueT, HashFunc>::SlabHashContext()
+    : num_buckets_(0), bucket_list_head_(nullptr) {
+    static_assert(sizeof(Slab) == (WARP_WIDTH * sizeof(ptr_t)));
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__host__ void SlabHashContext<KeyT, ValueT, HashFunc>::Setup(
+        Slab* bucket_list_head,
+        const uint32_t num_buckets,
+        const SlabAllocContext& allocator_ctx,
+        const MemoryAllocContext<thrust::pair<KeyT, ValueT>>&
+                pair_allocator_ctx) {
+    bucket_list_head_ = bucket_list_head;
+
+    num_buckets_ = num_buckets;
+    slab_list_allocator_ctx_ = allocator_ctx;
+    pair_allocator_ctx_ = pair_allocator_ctx;
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ __host__ __forceinline__ uint32_t
+SlabHashContext<KeyT, ValueT, HashFunc>::ComputeBucket(const KeyT& key) const {
+    return hash_fn_(key) % num_buckets_;
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ __forceinline__ void
+SlabHashContext<KeyT, ValueT, HashFunc>::WarpSyncKey(const KeyT& key,
+                                                     const uint32_t lane_id,
+                                                     KeyT& ret) {
+    const int chunks = sizeof(KeyT) / sizeof(int);
+#pragma unroll 1
+    for (size_t i = 0; i < chunks; ++i) {
+        ((int*)(&ret))[i] = __shfl_sync(ACTIVE_LANES_MASK, ((int*)(&key))[i],
+                                        lane_id, WARP_WIDTH);
+    }
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ int32_t SlabHashContext<KeyT, ValueT, HashFunc>::WarpFindKey(
+        const KeyT& key, const uint32_t lane_id, const ptr_t ptr) {
+    bool is_lane_found =
+            /* select key lanes */
+            ((1 << lane_id) & PAIR_PTR_LANES_MASK)
+            /* validate key addrs */
+            && (ptr != EMPTY_PAIR_PTR)
+            /* find keys in memory heap */
+            && pair_allocator_ctx_.extract(ptr).first == key;
+
+    return __ffs(__ballot_sync(PAIR_PTR_LANES_MASK, is_lane_found)) - 1;
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ __forceinline__ int32_t
+SlabHashContext<KeyT, ValueT, HashFunc>::WarpFindEmpty(const ptr_t ptr) {
+    bool is_lane_empty = (ptr == EMPTY_PAIR_PTR);
+
+    return __ffs(__ballot_sync(PAIR_PTR_LANES_MASK, is_lane_empty)) - 1;
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ __forceinline__ ptr_t
+SlabHashContext<KeyT, ValueT, HashFunc>::AllocateSlab(const uint32_t lane_id) {
+    return slab_list_allocator_ctx_.WarpAllocate(lane_id);
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ __forceinline__ void
+SlabHashContext<KeyT, ValueT, HashFunc>::FreeSlab(const ptr_t slab_ptr) {
+    slab_list_allocator_ctx_.FreeUntouched(slab_ptr);
+}
+
+//================================================
+// Individual Search Unit:
+//================================================
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Search(
+        bool& to_search,
+        const uint32_t lane_id,
+        const uint32_t bucket_id,
+        const KeyT& query_key,
+        ValueT& found_value,
+        uint8_t& found) {
+    uint32_t work_queue = 0;
+    uint32_t prev_work_queue = work_queue;
+    uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
+
+    /** > Loop when we have active lanes **/
+    while ((work_queue = __ballot_sync(ACTIVE_LANES_MASK, to_search))) {
+        /** 0. Restart from linked list head if the last query is finished **/
+        curr_slab_ptr =
+                (prev_work_queue != work_queue) ? HEAD_SLAB_PTR : curr_slab_ptr;
+        uint32_t src_lane = __ffs(work_queue) - 1;
+        uint32_t src_bucket =
+                __shfl_sync(ACTIVE_LANES_MASK, bucket_id, src_lane, WARP_WIDTH);
+
+        KeyT src_key;
+        WarpSyncKey(query_key, src_lane, src_key);
+
+        /* Each lane in the warp reads a uint in the slab in parallel */
+        const uint32_t unit_data =
+                (curr_slab_ptr == HEAD_SLAB_PTR)
+                        ? *(get_unit_ptr_from_list_head(src_bucket, lane_id))
+                        : *(get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                         lane_id));
+
+        int32_t lane_found = WarpFindKey(src_key, lane_id, unit_data);
+
+        /** 1. Found in this slab, SUCCEED **/
+        if (lane_found >= 0) {
+            /* broadcast found value */
+            ptr_t found_pair_internal_ptr = __shfl_sync(
+                    ACTIVE_LANES_MASK, unit_data, lane_found, WARP_WIDTH);
+
+            if (lane_id == src_lane) {
+                thrust::device_ptr<thrust::pair<KeyT, ValueT>> iterator(
+                        &pair_allocator_ctx_.extract(found_pair_internal_ptr));
+
+                found_value =
+                        pair_allocator_ctx_.extract(found_pair_internal_ptr)
+                                .second;
+                found = 1;
+                to_search = false;
+            }
+        }
+
+        /** 2. Not found in this slab **/
+        else {
+            /* broadcast next slab: lane 31 reads 'next' */
+            ptr_t next_slab_ptr = __shfl_sync(ACTIVE_LANES_MASK, unit_data,
+                                              NEXT_SLAB_PTR_LANE, WARP_WIDTH);
+
+            /** 2.1. Next slab is empty, ABORT **/
+            if (next_slab_ptr == EMPTY_SLAB_PTR) {
+                if (lane_id == src_lane) {
+                    found = 0;
+                    to_search = false;
+                }
+            }
+            /** 2.2. Next slab exists, RESTART **/
+            else {
+                curr_slab_ptr = next_slab_ptr;
+            }
+        }
+
+        prev_work_queue = work_queue;
+    }
+}
+
+/*
+ * each thread inserts a key-value pair into the hash table
+ * it is assumed all threads within a warp are present and collaborating with
+ * each other with a warp-cooperative work sharing (WCWS) strategy.
+ * InsertPair: ABORT if found
+ * replacePair: REPLACE if found
+ * WE DO NOT ALLOW DUPLICATE KEYS
+ */
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::InsertPair(
+        bool& to_be_inserted,
+        const uint32_t lane_id,
+        const uint32_t bucket_id,
+        const KeyT& key,
+        const ValueT& value) {
+    uint32_t work_queue = 0;
+    uint32_t prev_work_queue = 0;
+    uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
+
+    /** WARNING: Allocation should be finished in warp,
+     * results are unexpected otherwise **/
+    int prealloc_pair_internal_ptr = EMPTY_PAIR_PTR;
+    if (to_be_inserted) {
+        prealloc_pair_internal_ptr = pair_allocator_ctx_.Allocate();
+        pair_allocator_ctx_.extract(prealloc_pair_internal_ptr) =
+                thrust::make_pair(key, value);
+    }
+
+    /** > Loop when we have active lanes **/
+    while ((work_queue = __ballot_sync(ACTIVE_LANES_MASK, to_be_inserted))) {
+        /** 0. Restart from linked list head if last insertion is finished **/
+        curr_slab_ptr =
+                (prev_work_queue != work_queue) ? HEAD_SLAB_PTR : curr_slab_ptr;
+        uint32_t src_lane = __ffs(work_queue) - 1;
+        uint32_t src_bucket =
+                __shfl_sync(ACTIVE_LANES_MASK, bucket_id, src_lane, WARP_WIDTH);
+        KeyT src_key;
+        WarpSyncKey(key, src_lane, src_key);
+
+        /* Each lane in the warp reads a uint in the slab */
+        uint32_t unit_data =
+                (curr_slab_ptr == HEAD_SLAB_PTR)
+                        ? *(get_unit_ptr_from_list_head(src_bucket, lane_id))
+                        : *(get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                         lane_id));
+
+        int32_t lane_found = WarpFindKey(src_key, lane_id, unit_data);
+        int32_t lane_empty = WarpFindEmpty(unit_data);
+
+        /** Branch 1: key already existing, ABORT **/
+        if (lane_found >= 0) {
+            if (lane_id == src_lane) {
+                /* free memory heap */
+                to_be_inserted = false;
+                pair_allocator_ctx_.Free(prealloc_pair_internal_ptr);
+            }
+        }
+
+        /** Branch 2: empty slot available, try to insert **/
+        else if (lane_empty >= 0) {
+            if (lane_id == src_lane) {
+                // TODO: check why we cannot put malloc here
+                const uint32_t* unit_data_ptr =
+                        (curr_slab_ptr == HEAD_SLAB_PTR)
+                                ? get_unit_ptr_from_list_head(src_bucket,
+                                                              lane_empty)
+                                : get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                               lane_empty);
+                ptr_t old_pair_internal_ptr =
+                        atomicCAS((unsigned int*)unit_data_ptr, EMPTY_PAIR_PTR,
+                                  prealloc_pair_internal_ptr);
+
+                /** Branch 2.1: SUCCEED **/
+                if (old_pair_internal_ptr == EMPTY_PAIR_PTR) {
+                    to_be_inserted = false;
+                }
+                /** Branch 2.2: failed: RESTART
+                 *  In the consequent attempt,
+                 *  > if the same key was inserted in this slot,
+                 *    we fall back to Branch 1;
+                 *  > if a different key was inserted,
+                 *    we go to Branch 2 or 3.
+                 * **/
+            }
+        }
+
+        /** Branch 3: nothing found in this slab, goto next slab **/
+        else {
+            /* broadcast next slab */
+            ptr_t next_slab_ptr = __shfl_sync(ACTIVE_LANES_MASK, unit_data,
+                                              NEXT_SLAB_PTR_LANE, WARP_WIDTH);
+
+            /** Branch 3.1: next slab existing, RESTART this lane **/
+            if (next_slab_ptr != EMPTY_SLAB_PTR) {
+                curr_slab_ptr = next_slab_ptr;
+            }
+
+            /** Branch 3.2: next slab empty, try to allocate one **/
+            else {
+                ptr_t new_next_slab_ptr = AllocateSlab(lane_id);
+
+                if (lane_id == NEXT_SLAB_PTR_LANE) {
+                    const uint32_t* unit_data_ptr =
+                            (curr_slab_ptr == HEAD_SLAB_PTR)
+                                    ? get_unit_ptr_from_list_head(
+                                              src_bucket, NEXT_SLAB_PTR_LANE)
+                                    : get_unit_ptr_from_list_nodes(
+                                              curr_slab_ptr,
+                                              NEXT_SLAB_PTR_LANE);
+
+                    ptr_t old_next_slab_ptr =
+                            atomicCAS((unsigned int*)unit_data_ptr,
+                                      EMPTY_SLAB_PTR, new_next_slab_ptr);
+
+                    /** Branch 3.2.1: other thread allocated, RESTART lane
+                     *  In the consequent attempt, goto Branch 2' **/
+                    if (old_next_slab_ptr != EMPTY_SLAB_PTR) {
+                        FreeSlab(new_next_slab_ptr);
+                    }
+                    /** Branch 3.2.2: this thread allocated, RESTART lane,
+                     * 'goto Branch 2' **/
+                }
+            }
+        }
+
+        prev_work_queue = work_queue;
+    }
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__device__ void SlabHashContext<KeyT, ValueT, HashFunc>::Delete(
+        bool& to_be_deleted,
+        const uint32_t lane_id,
+        const uint32_t bucket_id,
+        const KeyT& key) {
+    uint32_t work_queue = 0;
+    uint32_t prev_work_queue = 0;
+    uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
+
+    /** > Loop when we have active lanes **/
+    while ((work_queue = __ballot_sync(ACTIVE_LANES_MASK, to_be_deleted))) {
+        /** 0. Restart from linked list head if last insertion is finished
+         * **/
+        curr_slab_ptr =
+                (prev_work_queue != work_queue) ? HEAD_SLAB_PTR : curr_slab_ptr;
+        uint32_t src_lane = __ffs(work_queue) - 1;
+        uint32_t src_bucket =
+                __shfl_sync(ACTIVE_LANES_MASK, bucket_id, src_lane, WARP_WIDTH);
+
+        KeyT src_key;
+        WarpSyncKey(key, src_lane, src_key);
+
+        const uint32_t unit_data =
+                (curr_slab_ptr == HEAD_SLAB_PTR)
+                        ? *(get_unit_ptr_from_list_head(src_bucket, lane_id))
+                        : *(get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                         lane_id));
+
+        int32_t lane_found = WarpFindKey(src_key, lane_id, unit_data);
+
+        /** Branch 1: key found **/
+        if (lane_found >= 0) {
+            ptr_t src_pair_internal_ptr = __shfl_sync(
+                    ACTIVE_LANES_MASK, unit_data, lane_found, WARP_WIDTH);
+
+            if (lane_id == src_lane) {
+                uint32_t* unit_data_ptr =
+                        (curr_slab_ptr == HEAD_SLAB_PTR)
+                                ? get_unit_ptr_from_list_head(src_bucket,
+                                                              lane_found)
+                                : get_unit_ptr_from_list_nodes(curr_slab_ptr,
+                                                               lane_found);
+                ptr_t pair_to_delete = *unit_data_ptr;
+
+                // TODO: keep in mind the potential double free problem
+                ptr_t old_key_value_pair =
+                        atomicCAS((unsigned int*)(unit_data_ptr),
+                                  pair_to_delete, EMPTY_PAIR_PTR);
+                /** Branch 1.1: this thread reset, free src_addr **/
+                if (old_key_value_pair == pair_to_delete) {
+                    pair_allocator_ctx_.Free(src_pair_internal_ptr);
+                }
+                /** Branch 1.2: other thread did the job, avoid double free
+                 * **/
+                to_be_deleted = false;
+            }
+        } else {  // no matching slot found:
+            ptr_t next_slab_ptr = __shfl_sync(ACTIVE_LANES_MASK, unit_data,
+                                              NEXT_SLAB_PTR_LANE, WARP_WIDTH);
+            if (next_slab_ptr == EMPTY_SLAB_PTR) {
+                // not found:
+                to_be_deleted = false;
+            } else {
+                curr_slab_ptr = next_slab_ptr;
+            }
+        }
+        prev_work_queue = work_queue;
+    }
+}
+
+//=== Individual search kernel:
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void SearchKernel(
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx,
+        KeyT* keys,
+        ValueT* values,
+        uint8_t* founds,
+        uint32_t num_queries) {
+    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+    uint32_t lane_id = threadIdx.x & 0x1F;
+
+    /* This warp is idle */
+    if ((tid - lane_id) >= num_queries) {
+        return;
+    }
+
+    /* Initialize the memory allocator on each warp */
+    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
+
+    bool lane_active = false;
+    uint32_t bucket_id = 0;
+    KeyT key;
+    ValueT value;
+    uint8_t found;
+
+    if (tid < num_queries) {
+        lane_active = true;
+        key = keys[tid];
+        bucket_id = slab_hash_ctx.ComputeBucket(key);
+    }
+
+    slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key, value, found);
+
+    if (tid < num_queries) {
+        values[tid] = value;
+        founds[tid] = found;
+    }
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void InsertKernel(
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx,
+        KeyT* keys,
+        ValueT* values,
+        uint32_t num_keys) {
+    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+    uint32_t lane_id = threadIdx.x & 0x1F;
+
+    if ((tid - lane_id) >= num_keys) {
+        return;
+    }
+
+    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
+
+    bool lane_active = false;
+    uint32_t bucket_id = 0;
+    KeyT key;
+    ValueT value;
+
+    if (tid < num_keys) {
+        lane_active = true;
+        key = keys[tid];
+        value = values[tid];
+        bucket_id = slab_hash_ctx.ComputeBucket(key);
+    }
+
+    slab_hash_ctx.InsertPair(lane_active, lane_id, bucket_id, key, value);
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void DeleteKernel(
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx,
+        KeyT* keys,
+        uint32_t num_keys) {
+    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+    uint32_t lane_id = threadIdx.x & 0x1F;
+
+    if ((tid - lane_id) >= num_keys) {
+        return;
+    }
+
+    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
+
+    bool lane_active = false;
+    uint32_t bucket_id = 0;
+    KeyT key;
+
+    if (tid < num_keys) {
+        lane_active = true;
+        key = keys[tid];
+        bucket_id = slab_hash_ctx.ComputeBucket(key);
+    }
+
+    slab_hash_ctx.Delete(lane_active, lane_id, bucket_id, key);
+}
+
+/*
+ * This kernel can be used to compute total number of elements within each
+ * bucket. The final results per bucket is stored in d_count_result array
+ */
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void bucket_count_kernel(
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx,
+        uint32_t* d_count_result,
+        uint32_t num_buckets) {
+    // global warp ID
+    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+    uint32_t wid = tid >> 5;
+    // assigning a warp per bucket
+    if (wid >= num_buckets) {
+        return;
+    }
+
+    uint32_t lane_id = threadIdx.x & 0x1F;
+
+    // initializing the memory allocator on each warp:
+    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
+
+    uint32_t count = 0;
+
+    uint32_t src_unit_data =
+            *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id);
+
+    count += __popc(
+            __ballot_sync(PAIR_PTR_LANES_MASK, src_unit_data != EMPTY_PAIR_PTR));
+    uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
+
+    while (next != EMPTY_SLAB_PTR) {
+        src_unit_data =
+                *slab_hash_ctx.get_unit_ptr_from_list_nodes(next, lane_id);
+        count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK,
+                                      src_unit_data != EMPTY_PAIR_PTR));
+        next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
+    }
+    // writing back the results:
+    if (lane_id == 0) {
+        d_count_result[wid] = count;
+    }
+}
+
+/*
+ * This kernel goes through all allocated bitmaps for a slab_hash_ctx's
+ * allocator and store number of allocated slabs.
+ * TODO: this should be moved into allocator's codebase (violation of layers)
+ */
+template <typename KeyT, typename ValueT, typename HashFunc>
+__global__ void compute_stats_allocators(
+        uint32_t* d_count_super_block,
+        SlabHashContext<KeyT, ValueT, HashFunc> slab_hash_ctx) {
+    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+
+    int num_bitmaps =
+            slab_hash_ctx.get_slab_alloc_ctx().NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
+            32;
+    if (tid >= num_bitmaps) {
+        return;
+    }
+
+    for (int i = 0; i < slab_hash_ctx.get_slab_alloc_ctx().num_super_blocks_;
+         i++) {
+        uint32_t read_bitmap = *(
+                slab_hash_ctx.get_slab_alloc_ctx().get_ptr_for_bitmap(i, tid));
+        atomicAdd(&d_count_super_block[i], __popc(read_bitmap));
+    }
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+SlabHash<KeyT, ValueT, HashFunc>::SlabHash(
+        const uint32_t num_buckets,
+        const std::shared_ptr<SlabAlloc>& slab_list_allocator,
+        const std::shared_ptr<MemoryAlloc<thrust::pair<KeyT, ValueT>>>&
+                pair_allocator,
+        uint32_t device_idx)
+    : num_buckets_(num_buckets),
+      slab_list_allocator_(slab_list_allocator),
+      pair_allocator_(pair_allocator),
+      device_idx_(device_idx),
+      bucket_list_head_(nullptr) {
+    assert(slab_list_allocator && pair_allocator &&
+           "No proper dynamic allocator attached to the slab hash.");
+
+    int32_t devCount = 0;
+    CHECK_CUDA(cudaGetDeviceCount(&devCount));
+    assert(device_idx_ < devCount);
+
+    CHECK_CUDA(cudaSetDevice(device_idx_));
+
+    // allocating initial buckets:
+    CHECK_CUDA(cudaMalloc(&bucket_list_head_, sizeof(Slab) * num_buckets_));
+    CHECK_CUDA(
+            cudaMemset(bucket_list_head_, 0xFF, sizeof(Slab) * num_buckets_));
+
+    gpu_context_.Setup(bucket_list_head_, num_buckets_,
+                       slab_list_allocator_->getContext(),
+                       pair_allocator_->gpu_context_);
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+SlabHash<KeyT, ValueT, HashFunc>::~SlabHash() {
+    CHECK_CUDA(cudaSetDevice(device_idx_));
+    CHECK_CUDA(cudaFree(bucket_list_head_));
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+void SlabHash<KeyT, ValueT, HashFunc>::Insert(KeyT* keys,
+                                              ValueT* values,
+                                              uint32_t num_keys) {
+    const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
+    // calling the kernel for bulk build:
+    CHECK_CUDA(cudaSetDevice(device_idx_));
+    InsertKernel<KeyT, ValueT, HashFunc>
+            <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, values, num_keys);
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+void SlabHash<KeyT, ValueT, HashFunc>::Search(KeyT* keys,
+                                              ValueT* values,
+                                              uint8_t* founds,
+                                              uint32_t num_queries) {
+    CHECK_CUDA(cudaSetDevice(device_idx_));
+    const uint32_t num_blocks = (num_queries + BLOCKSIZE_ - 1) / BLOCKSIZE_;
+    SearchKernel<KeyT, ValueT, HashFunc><<<num_blocks, BLOCKSIZE_>>>(
+            gpu_context_, keys, values, founds, num_queries);
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+void SlabHash<KeyT, ValueT, HashFunc>::Delete(KeyT* keys, uint32_t num_keys) {
+    CHECK_CUDA(cudaSetDevice(device_idx_));
+    const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
+    DeleteKernel<KeyT, ValueT, HashFunc>
+            <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, num_keys);
+}
+
+template <typename KeyT, typename ValueT, typename HashFunc>
+double SlabHash<KeyT, ValueT, HashFunc>::ComputeLoadFactor(int flag = 0) {
+    uint32_t* h_bucket_count = new uint32_t[num_buckets_];
+    uint32_t* d_bucket_count;
+    CHECK_CUDA(cudaMalloc((void**)&d_bucket_count,
+                          sizeof(uint32_t) * num_buckets_));
+    CHECK_CUDA(cudaMemset(d_bucket_count, 0, sizeof(uint32_t) * num_buckets_));
+
+    const auto& dynamic_alloc = gpu_context_.get_slab_alloc_ctx();
+    const uint32_t num_super_blocks = dynamic_alloc.num_super_blocks_;
+    uint32_t* h_count_super_blocks = new uint32_t[num_super_blocks];
+    uint32_t* d_count_super_blocks;
+    CHECK_CUDA(cudaMalloc((void**)&d_count_super_blocks,
+                          sizeof(uint32_t) * num_super_blocks));
+    CHECK_CUDA(cudaMemset(d_count_super_blocks, 0,
+                          sizeof(uint32_t) * num_super_blocks));
+    //---------------------------------
+    // counting the number of inserted elements:
+    const uint32_t blocksize = 128;
+    const uint32_t num_blocks = (num_buckets_ * 32 + blocksize - 1) / blocksize;
+    bucket_count_kernel<KeyT, ValueT, HashFunc><<<num_blocks, blocksize>>>(
+            gpu_context_, d_bucket_count, num_buckets_);
+    CHECK_CUDA(cudaMemcpy(h_bucket_count, d_bucket_count,
+                          sizeof(uint32_t) * num_buckets_,
+                          cudaMemcpyDeviceToHost));
+
+    int total_elements_stored = 0;
+    for (int i = 0; i < num_buckets_; i++) {
+        total_elements_stored += h_bucket_count[i];
+    }
+
+    if (flag) {
+        printf("## Total elements stored: %d (%lu bytes).\n",
+               total_elements_stored,
+               total_elements_stored * (sizeof(KeyT) + sizeof(ValueT)));
+    }
+
+    // counting total number of allocated memory units:
+    int num_mem_units = dynamic_alloc.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 32;
+    int num_cuda_blocks = (num_mem_units + blocksize - 1) / blocksize;
+    compute_stats_allocators<<<num_cuda_blocks, blocksize>>>(
+            d_count_super_blocks, gpu_context_);
+
+    CHECK_CUDA(cudaMemcpy(h_count_super_blocks, d_count_super_blocks,
+                          sizeof(uint32_t) * num_super_blocks,
+                          cudaMemcpyDeviceToHost));
+
+    // computing load factor
+    int total_mem_units = num_buckets_;
+    for (int i = 0; i < num_super_blocks; i++)
+        total_mem_units += h_count_super_blocks[i];
+
+    double load_factor =
+            double(total_elements_stored * (sizeof(KeyT) + sizeof(ValueT))) /
+            double(total_mem_units * WARP_WIDTH * sizeof(uint32_t));
+
+    if (d_count_super_blocks) CHECK_CUDA(cudaFree(d_count_super_blocks));
+    if (d_bucket_count) CHECK_CUDA(cudaFree(d_bucket_count));
+    delete[] h_bucket_count;
+    delete[] h_count_super_blocks;
+
+    return load_factor;
+}

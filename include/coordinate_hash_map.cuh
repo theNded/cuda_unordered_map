@@ -19,7 +19,7 @@
 #pragma once
 
 #include "coordinate_hash_map.h"
-#include "slab_hash/slab_hash_host.cuh"
+#include "slab_hash/slab_hash.h"
 
 template <typename KeyT, typename ValueT, typename HashFunc>
 CoordinateHashMap<KeyT, ValueT, HashFunc>::CoordinateHashMap(
