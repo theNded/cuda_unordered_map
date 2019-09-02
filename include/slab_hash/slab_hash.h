@@ -49,6 +49,7 @@ public:
     void Insert(_Key* keys, _Value* values, uint32_t num_keys);
     void Search(_Key* keys, _Value* values, uint8_t* founds, uint32_t num_keys);
     void Remove(_Key* keys, uint32_t num_keys);
+    void GetIterators(iterator_t* iterators);
 
 private:
     uint32_t num_buckets_;
@@ -95,6 +96,7 @@ public:
 
     /* Hash function */
     __device__ __host__ uint32_t ComputeBucket(const _Key& key) const;
+    __device__ __host__ uint32_t bucket_size() const { return num_buckets_; }
 
     __device__ __host__ SlabAllocContext& get_slab_alloc_ctx() {
         return slab_list_allocator_ctx_;
@@ -590,14 +592,11 @@ __global__ void RemoveKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
     slab_hash_ctx.Remove(lane_active, lane_id, bucket_id, key);
 }
 
-/*
- * This kernel can be used to compute total number of elements within each
- * bucket. The final results per bucket is stored in d_count_result array
- */
 template <typename _Key, typename _Value, typename _Hash>
-__global__ void bucket_count_kernel(
+__global__ void GetIteratorsKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        uint32_t* d_count_result,
+        iterator_t* iterators,
+        uint32_t* iterator_count,
         uint32_t num_buckets) {
     // global warp ID
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -607,30 +606,85 @@ __global__ void bucket_count_kernel(
         return;
     }
 
+    /* uint32_t lane_id = threadIdx.x & 0x1F; */
+
+    /* // initializing the memory allocator on each warp: */
+    /* slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id); */
+
+    /* uint32_t src_unit_data = */
+    /*         *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id); */
+    /* uint32_t active_mask = */
+    /*         __ballot_sync(PAIR_PTR_LANES_MASK, src_unit_data !=
+     * EMPTY_PAIR_PTR); */
+    /* int leader = __ffs(active_mask) - 1; */
+    /* uint32_t count = __popc(active_mask); */
+    /* uint32_t rank = __popc(active_mask & __lanemask_lt()); */
+    /* uint32_t prev_count; */
+    /* if (rank == 0) { */
+    /*     prev_count = atomicAdd(iterator_count, count); */
+    /* } */
+    /* prev_count = __shfl_sync(active_mask, prev_count, leader); */
+
+    /* if (src_unit_data != EMPTY_PAIR_PTR) { */
+    /*     iterators[prev_count + rank] = src_unit_data; */
+    /* } */
+
+    /* uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32); */
+    /* while (next != EMPTY_SLAB_PTR) { */
+    /*     src_unit_data = */
+    /*             *slab_hash_ctx.get_unit_ptr_from_list_nodes(next, lane_id);
+     */
+    /*     count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK, */
+    /*                                   src_unit_data != EMPTY_PAIR_PTR)); */
+    /*     next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32); */
+    /* } */
+    /* // writing back the results: */
+    /* if (lane_id == 0) { */
+    /* } */
+}
+
+/*
+ * This kernel can be used to compute total number of elements within each
+ * bucket. The final results per bucket is stored in d_count_result array
+ */
+template <typename _Key, typename _Value, typename _Hash>
+__global__ void CountBucketElemsKernel(
+        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
+        uint32_t* bucket_elem_counts) {
+    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t lane_id = threadIdx.x & 0x1F;
 
-    // initializing the memory allocator on each warp:
+    // assigning a warp per bucket
+    uint32_t wid = tid >> 5;
+    if (wid >= slab_hash_ctx.bucket_size()) {
+        return;
+    }
+
     slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
 
     uint32_t count = 0;
 
+    // count head node
     uint32_t src_unit_data =
             *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id);
-
     count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK,
                                   src_unit_data != EMPTY_PAIR_PTR));
-    uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
+    ptr_t next = __shfl_sync(ACTIVE_LANES_MASK, src_unit_data,
+                             NEXT_SLAB_PTR_LANE, WARP_WIDTH);
 
+    // count following nodes
     while (next != EMPTY_SLAB_PTR) {
         src_unit_data =
                 *slab_hash_ctx.get_unit_ptr_from_list_nodes(next, lane_id);
         count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK,
                                       src_unit_data != EMPTY_PAIR_PTR));
-        next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32);
+        next = __shfl_sync(ACTIVE_LANES_MASK, src_unit_data, NEXT_SLAB_PTR_LANE,
+                           WARP_WIDTH);
     }
-    // writing back the results:
+
+    // write back the results:
     if (lane_id == 0) {
-        d_count_result[wid] = count;
+        bucket_elem_counts[wid] = count;
     }
 }
 
@@ -743,8 +797,8 @@ double SlabHash<_Key, _Value, _Hash>::ComputeLoadFactor(int flag = 0) {
     // counting the number of inserted elements:
     const uint32_t blocksize = 128;
     const uint32_t num_blocks = (num_buckets_ * 32 + blocksize - 1) / blocksize;
-    bucket_count_kernel<_Key, _Value, _Hash><<<num_blocks, blocksize>>>(
-            gpu_context_, d_bucket_count, num_buckets_);
+    CountBucketElemsKernel<_Key, _Value, _Hash>
+            <<<num_blocks, blocksize>>>(gpu_context_, d_bucket_count);
     CHECK_CUDA(cudaMemcpy(h_bucket_count, d_bucket_count,
                           sizeof(uint32_t) * num_buckets_,
                           cudaMemcpyDeviceToHost));
