@@ -1,6 +1,8 @@
 #include "../helper_cuda.h"
 #include "config.h"
 
+#pragma once
+
 class Allocator {
 public:
     Allocator(int device_id = 0) : device_id_(device_id) {}

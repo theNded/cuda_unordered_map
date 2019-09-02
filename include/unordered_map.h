@@ -40,9 +40,12 @@ struct hash {
 };
 
 /* Lightweight wrapper to handle host input */
-/* KeyT supports elementary types: int, long, etc. */
-/* ValueT supports arbitrary types in theory. */
-template <typename KeyT, typename ValueT, typename HashFunc = hash<KeyT>>
+/* Key supports elementary types: int, long, etc. */
+/* Value supports arbitrary types in theory. */
+template <typename Key,
+          typename Value,
+          typename Hash = hash<Key>,
+          class Alloc = CudaAllocator>
 class UnorderedMap {
 public:
     UnorderedMap(uint32_t max_keys,
@@ -54,30 +57,30 @@ public:
     ~UnorderedMap();
 
     /* We assert all memory buffers are allocated prior to the function call
-         @keys_device stores keys in KeyT[num_keys x D],
-         @[query]_values_device stores keys in ValueT[num_keys] */
-    /* query_values[i] is undefined (basically ValueT(0)) if mask[i] == 0 */
+         @keys_device stores keys in Key[num_keys x D],
+         @[query]_values_device stores keys in Value[num_keys] */
+    /* query_values[i] is undefined (basically Value(0)) if mask[i] == 0 */
 
-    float Insert(thrust::device_vector<KeyT>& keys,
-                 thrust::device_vector<ValueT>& values);
-    float Insert(const std::vector<KeyT>& keys,
-                 const std::vector<ValueT>& values);
-    float Insert(KeyT* keys_device, ValueT* values_device, int num_keys);
+    float Insert(thrust::device_vector<Key>& input_keys,
+                 thrust::device_vector<Value>& input_values);
+    float Insert(const std::vector<Key>& input_keys,
+                 const std::vector<Value>& input_values);
+    float Insert(Key* input_keys, Value* input_values, int num_keys);
 
-    float Search(thrust::device_vector<KeyT>& query_keys,
-                 thrust::device_vector<ValueT>& query_values,
-                 thrust::device_vector<uint8_t>& mask);
-    float Search(const std::vector<KeyT>& query_keys,
-                 std::vector<ValueT>& query_values,
-                 std::vector<uint8_t>& mask);
-    float Search(KeyT* query_keys_device,
-                 ValueT* query_values_device,
-                 uint8_t* mask,
+    float Search(thrust::device_vector<Key>& input_keys,
+                 thrust::device_vector<Value>& output_values,
+                 thrust::device_vector<uint8_t>& output_masks);
+    float Search(const std::vector<Key>& input_keys,
+                 std::vector<Value>& output_values,
+                 std::vector<uint8_t>& output_masks);
+    float Search(Key* input_keys,
+                 Value* output_values,
+                 uint8_t* output_masks,
                  int num_keys);
 
-    float Remove(thrust::device_vector<KeyT>& keys);
-    float Remove(const std::vector<KeyT>& keys);
-    float Remove(KeyT* keys, int num_keys);
+    float Remove(thrust::device_vector<Key>& input_keys);
+    float Remove(const std::vector<Key>& input_keys);
+    float Remove(Key* input_keys, int num_keys);
 
     float ComputeLoadFactor(int flag = 0);
 
@@ -91,17 +94,18 @@ private:
     cudaEvent_t stop_;
 
     /* Handled by CUDA */
-    KeyT* key_buffer_;
-    ValueT* value_buffer_;
-    KeyT* query_key_buffer_;
-    ValueT* query_value_buffer_;
-    uint8_t* query_result_buffer_;
+    Key* input_key_buffer_;
+    Value* input_value_buffer_;
+    Key* output_key_buffer_;
+    Value* output_value_buffer_;
+    uint8_t* output_mask_buffer_;
 
-    std::shared_ptr<SlabHash<KeyT, ValueT, HashFunc>> slab_hash_;
+    std::shared_ptr<SlabHash<Key, Value, Hash, Alloc>> slab_hash_;
+    std::shared_ptr<Alloc> allocator_;
 };
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-UnorderedMap<KeyT, ValueT, HashFunc>::UnorderedMap(
+template <typename Key, typename Value, typename Hash, class Alloc>
+UnorderedMap<Key, Value, Hash, Alloc>::UnorderedMap(
         uint32_t max_keys,
         uint32_t keys_per_bucket,
         float expected_occupancy_per_bucket,
@@ -118,52 +122,57 @@ UnorderedMap<KeyT, ValueT, HashFunc>::UnorderedMap(
     CHECK_CUDA(cudaGetDeviceCount(&cuda_device_count_));
     assert(cuda_device_idx_ < cuda_device_count_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
+    allocator_ = std::make_shared<Alloc>(cuda_device_idx_);
 
-    // allocating key, value arrays:
-    CHECK_CUDA(cudaMalloc(&key_buffer_, sizeof(KeyT) * max_keys_));
-    CHECK_CUDA(cudaMalloc(&value_buffer_, sizeof(ValueT) * max_keys_));
-    CHECK_CUDA(cudaMalloc(&query_key_buffer_, sizeof(KeyT) * max_keys_));
-    CHECK_CUDA(cudaMalloc(&query_value_buffer_, sizeof(ValueT) * max_keys_));
-    CHECK_CUDA(cudaMalloc(&query_result_buffer_, sizeof(uint8_t) * max_keys_));
+    // allocating key, value arrays to buffer input and output:
+    input_key_buffer_ = allocator_->template allocate<Key>(max_keys_);
+    input_value_buffer_ = allocator_->template allocate<Value>(max_keys_);
+    output_key_buffer_ = allocator_->template allocate<Key>(max_keys_);
+    output_value_buffer_ = allocator_->template allocate<Value>(max_keys_);
+    output_mask_buffer_ = allocator_->template allocate<uint8_t>(max_keys_);
 
     CHECK_CUDA(cudaEventCreate(&start_));
     CHECK_CUDA(cudaEventCreate(&stop_));
 
     // allocate an initialize the allocator:
-    slab_hash_ = std::make_shared<SlabHash<KeyT, ValueT, HashFunc>>(
+    slab_hash_ = std::make_shared<SlabHash<Key, Value, Hash, Alloc>>(
             num_buckets_, max_keys_, cuda_device_idx_);
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-UnorderedMap<KeyT, ValueT, HashFunc>::~UnorderedMap() {
+template <typename Key, typename Value, typename Hash, class Alloc>
+UnorderedMap<Key, Value, Hash, Alloc>::~UnorderedMap() {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
 
-    CHECK_CUDA(cudaFree(key_buffer_));
-    CHECK_CUDA(cudaFree(value_buffer_));
+    allocator_->template free<Key>(input_key_buffer_);
+    allocator_->template free<Value>(input_value_buffer_);
 
-    CHECK_CUDA(cudaFree(query_key_buffer_));
-    CHECK_CUDA(cudaFree(query_value_buffer_));
+    allocator_->template free<Key>(output_key_buffer_);
+    allocator_->template free<Value>(output_value_buffer_);
+    allocator_->template free<uint8_t>(output_mask_buffer_);
 
     CHECK_CUDA(cudaEventDestroy(start_));
     CHECK_CUDA(cudaEventDestroy(stop_));
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::Insert(
-        const std::vector<KeyT>& keys, const std::vector<ValueT>& values) {
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::Insert(
+        const std::vector<Key>& input_keys,
+        const std::vector<Value>& input_values) {
     float time;
-    assert(values.size() == keys.size());
+    assert(input_values.size() == input_keys.size());
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemcpy(key_buffer_, keys.data(), sizeof(KeyT) * keys.size(),
+    CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
+                          sizeof(Key) * input_keys.size(),
                           cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(value_buffer_, values.data(),
-                          sizeof(ValueT) * values.size(),
+    CHECK_CUDA(cudaMemcpy(input_value_buffer_, input_values.data(),
+                          sizeof(Value) * input_values.size(),
                           cudaMemcpyHostToDevice));
 
     CHECK_CUDA(cudaEventRecord(start_, 0));
 
-    slab_hash_->Insert(key_buffer_, value_buffer_, keys.size());
+    slab_hash_->Insert(input_key_buffer_, input_value_buffer_,
+                       input_keys.size());
 
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
@@ -171,18 +180,19 @@ float UnorderedMap<KeyT, ValueT, HashFunc>::Insert(
     return time;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::Insert(
-        thrust::device_vector<KeyT>& keys,
-        thrust::device_vector<ValueT>& values) {
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::Insert(
+        thrust::device_vector<Key>& input_keys,
+        thrust::device_vector<Value>& input_values) {
     float time;
-    assert(values.size() == keys.size());
+    assert(input_values.size() == input_keys.size());
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaEventRecord(start_, 0));
 
-    slab_hash_->Insert(thrust::raw_pointer_cast(keys.data()),
-                       thrust::raw_pointer_cast(values.data()), keys.size());
+    slab_hash_->Insert(thrust::raw_pointer_cast(input_keys.data()),
+                       thrust::raw_pointer_cast(input_values.data()),
+                       input_keys.size());
 
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
@@ -190,72 +200,72 @@ float UnorderedMap<KeyT, ValueT, HashFunc>::Insert(
     return time;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::Insert(KeyT* keys,
-                                                   ValueT* values,
-                                                   int num_keys) {
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::Insert(Key* input_keys,
+                                                    Value* input_values,
+                                                    int num_keys) {
     float time;
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaEventRecord(start_, 0));
-    slab_hash_->Insert(keys, values, num_keys);
+    slab_hash_->Insert(input_keys, input_values, num_keys);
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
     CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
     return time;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::Search(
-        const std::vector<KeyT>& query_keys,
-        std::vector<ValueT>& query_values,
-        std::vector<uint8_t>& query_found) {
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::Search(
+        const std::vector<Key>& input_keys,
+        std::vector<Value>& output_values,
+        std::vector<uint8_t>& output_masks) {
     float time;
-    assert(query_found.size() >= query_keys.size());
-    assert(query_values.size() >= query_keys.size());
+    assert(output_values.size() == input_keys.size());
+    assert(output_masks.size() == input_keys.size());
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemcpy(query_key_buffer_, query_keys.data(),
-                          sizeof(KeyT) * query_keys.size(),
+    CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
+                          sizeof(Key) * input_keys.size(),
                           cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemset(query_value_buffer_, 0xFF,
-                          sizeof(ValueT) * query_keys.size()));
-    CHECK_CUDA(cudaMemset(query_result_buffer_, 0,
-                          sizeof(uint8_t) * query_keys.size()));
+    CHECK_CUDA(cudaMemset(output_value_buffer_, 0xFF,
+                          sizeof(Value) * input_keys.size()));
+    CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
+                          sizeof(uint8_t) * input_keys.size()));
 
     CHECK_CUDA(cudaEventRecord(start_, 0));
 
-    slab_hash_->Search(query_key_buffer_, query_value_buffer_,
-                       query_result_buffer_, query_keys.size());
+    slab_hash_->Search(input_key_buffer_, output_value_buffer_,
+                       output_mask_buffer_, input_keys.size());
 
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
     CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
 
-    CHECK_CUDA(cudaMemcpy(query_values.data(), query_value_buffer_,
-                          sizeof(ValueT) * query_keys.size(),
+    CHECK_CUDA(cudaMemcpy(output_values.data(), output_value_buffer_,
+                          sizeof(Value) * input_keys.size(),
                           cudaMemcpyDeviceToHost));
-    CHECK_CUDA(cudaMemcpy(query_found.data(), query_result_buffer_,
-                          sizeof(uint8_t) * query_keys.size(),
+    CHECK_CUDA(cudaMemcpy(output_masks.data(), output_mask_buffer_,
+                          sizeof(uint8_t) * input_keys.size(),
                           cudaMemcpyDeviceToHost));
     CHECK_CUDA(cudaDeviceSynchronize());
     return time;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::Search(
-        thrust::device_vector<KeyT>& query_keys,
-        thrust::device_vector<ValueT>& query_values,
-        thrust::device_vector<uint8_t>& mask) {
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::Search(
+        thrust::device_vector<Key>& input_keys,
+        thrust::device_vector<Value>& output_values,
+        thrust::device_vector<uint8_t>& output_masks) {
     float time;
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
 
-    thrust::fill(mask.begin(), mask.end(), 0);
+    thrust::fill(output_masks.begin(), output_masks.end(), 0);
     CHECK_CUDA(cudaEventRecord(start_, 0));
 
-    slab_hash_->Search(thrust::raw_pointer_cast(query_keys.data()),
-                       thrust::raw_pointer_cast(query_values.data()),
-                       thrust::raw_pointer_cast(mask.data()),
-                       query_keys.size());
+    slab_hash_->Search(thrust::raw_pointer_cast(input_keys.data()),
+                       thrust::raw_pointer_cast(output_values.data()),
+                       thrust::raw_pointer_cast(output_masks.data()),
+                       input_keys.size());
 
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
@@ -263,17 +273,17 @@ float UnorderedMap<KeyT, ValueT, HashFunc>::Search(
     return time;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::Search(KeyT* query_keys,
-                                                   ValueT* query_values,
-                                                   uint8_t* mask,
-                                                   int num_keys) {
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::Search(Key* input_keys,
+                                                    Value* output_values,
+                                                    uint8_t* output_masks,
+                                                    int num_keys) {
     float time;
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemset(mask, 0, sizeof(uint8_t) * num_keys));
+    CHECK_CUDA(cudaMemset(output_masks, 0, sizeof(uint8_t) * num_keys));
     CHECK_CUDA(cudaEventRecord(start_, 0));
 
-    slab_hash_->Search(query_keys, query_values, mask, num_keys);
+    slab_hash_->Search(input_keys, output_values, output_masks, num_keys);
 
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
@@ -281,17 +291,18 @@ float UnorderedMap<KeyT, ValueT, HashFunc>::Search(KeyT* query_keys,
     return time;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::Remove(
-        const std::vector<KeyT>& keys) {
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::Remove(
+        const std::vector<Key>& input_keys) {
     float time;
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemcpy(key_buffer_, keys.data(), sizeof(KeyT) * keys.size(),
+    CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
+                          sizeof(Key) * input_keys.size(),
                           cudaMemcpyHostToDevice));
 
     CHECK_CUDA(cudaEventRecord(start_, 0));
 
-    slab_hash_->Remove(key_buffer_, keys.size());
+    slab_hash_->Remove(input_key_buffer_, input_keys.size());
 
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
@@ -299,14 +310,15 @@ float UnorderedMap<KeyT, ValueT, HashFunc>::Remove(
     return time;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::Remove(
-        thrust::device_vector<KeyT>& keys) {
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::Remove(
+        thrust::device_vector<Key>& input_keys) {
     float time;
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaEventRecord(start_, 0));
 
-    slab_hash_->Remove(thrust::raw_pointer_cast(keys.data()), keys.size());
+    slab_hash_->Remove(thrust::raw_pointer_cast(input_keys.data()),
+                       input_keys.size());
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
     CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
@@ -314,13 +326,14 @@ float UnorderedMap<KeyT, ValueT, HashFunc>::Remove(
     return time;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::Remove(KeyT* keys, int num_keys) {
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::Remove(Key* input_keys,
+                                                    int num_keys) {
     float time;
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaEventRecord(start_, 0));
 
-    slab_hash_->Remove(keys, num_keys);
+    slab_hash_->Remove(input_keys, num_keys);
     CHECK_CUDA(cudaEventRecord(stop_, 0));
     CHECK_CUDA(cudaEventSynchronize(stop_));
     CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
@@ -328,8 +341,8 @@ float UnorderedMap<KeyT, ValueT, HashFunc>::Remove(KeyT* keys, int num_keys) {
     return time;
 }
 
-template <typename KeyT, typename ValueT, typename HashFunc>
-float UnorderedMap<KeyT, ValueT, HashFunc>::ComputeLoadFactor(
+template <typename Key, typename Value, typename Hash, class Alloc>
+float UnorderedMap<Key, Value, Hash, Alloc>::ComputeLoadFactor(
         int flag /* = 0 */) {
     return slab_hash_->ComputeLoadFactor(flag);
 }

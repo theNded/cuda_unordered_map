@@ -92,19 +92,20 @@ class MemoryAlloc {
 public:
     int max_capacity_;
     MemoryAllocContext<T> gpu_context_;
-    Alloc allocator_;
+    std::shared_ptr<Alloc> allocator_;
 
 public:
     MemoryAlloc(int max_capacity) {
+        allocator_ = std::make_shared<Alloc>();
         max_capacity_ = max_capacity;
         gpu_context_.max_capacity_ = max_capacity;
 
         gpu_context_.heap_counter_ =
-                allocator_.template allocate<int>(size_t(1));
+                allocator_->template allocate<int>(size_t(1));
         gpu_context_.heap_ =
-                allocator_.template allocate<ptr_t>(size_t(max_capacity_));
+                allocator_->template allocate<ptr_t>(size_t(max_capacity_));
         gpu_context_.data_ =
-                allocator_.template allocate<T>(size_t(max_capacity_));
+                allocator_->template allocate<T>(size_t(max_capacity_));
 
         const int blocks = (max_capacity_ + 128 - 1) / 128;
         const int threads = 128;
@@ -119,9 +120,9 @@ public:
     }
 
     ~MemoryAlloc() {
-        allocator_.template free<int>(gpu_context_.heap_counter_);
-        allocator_.template free<ptr_t>(gpu_context_.heap_);
-        allocator_.template free<T>(gpu_context_.data_);
+        allocator_->template free<int>(gpu_context_.heap_counter_);
+        allocator_->template free<ptr_t>(gpu_context_.heap_);
+        allocator_->template free<T>(gpu_context_.data_);
     }
 
     std::vector<int> DownloadHeap() {

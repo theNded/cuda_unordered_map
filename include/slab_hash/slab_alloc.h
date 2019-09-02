@@ -19,8 +19,8 @@
 #include <stdint.h>
 #include <iostream>
 #include "../helper_cuda.h"
+#include "allocator.h"
 #include "config.h"
-
 /*
  * This class does not own any memory, and will be shallowly copied into device
  * kernel
@@ -247,6 +247,7 @@ private:
 /*
  * This class owns the memory for the allocator on the device
  */
+template <class _Alloc = CudaAllocator>
 class SlabAlloc {
 private:
     // a pointer to each super-block
@@ -257,6 +258,7 @@ private:
 
     // the context class is actually copied shallowly into GPU device
     SlabAllocContext slab_alloc_context_;
+    std::shared_ptr<_Alloc> allocator_;
 
 public:
     SlabAlloc() : super_blocks_(nullptr), hash_coef_(0) {
@@ -264,12 +266,12 @@ public:
         std::mt19937 rng(time(0));
         hash_coef_ = rng();
 
+        allocator_ = std::make_shared<_Alloc>();
         // In the light version, we put num_super_blocks super blocks within a
         // single array
-        CHECK_CUDA(cudaMalloc(&super_blocks_,
-                              slab_alloc_context_.SUPER_BLOCK_SIZE_ *
-                                      slab_alloc_context_.num_super_blocks_ *
-                                      sizeof(uint32_t)));
+        super_blocks_ = allocator_->template allocate<uint32_t>(
+                slab_alloc_context_.SUPER_BLOCK_SIZE_ *
+                slab_alloc_context_.num_super_blocks_);
 
         for (int i = 0; i < slab_alloc_context_.num_super_blocks_; i++) {
             // setting bitmaps into zeros:
@@ -295,7 +297,7 @@ public:
         // initializing the slab context:
         slab_alloc_context_.Setup(super_blocks_, hash_coef_);
     }
-    ~SlabAlloc() { CHECK_CUDA(cudaFree(super_blocks_)); }
+    ~SlabAlloc() { allocator_->template free<uint32_t>(super_blocks_); }
 
     const SlabAllocContext& getContext() const { return slab_alloc_context_; }
 };

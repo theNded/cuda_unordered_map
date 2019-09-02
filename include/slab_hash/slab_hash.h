@@ -64,7 +64,7 @@ private:
     std::shared_ptr<_Alloc> allocator_;
     std::shared_ptr<MemoryAlloc<thrust::pair<_Key, _Value>, _Alloc>>
             pair_allocator_;
-    std::shared_ptr<SlabAlloc> slab_list_allocator_;
+    std::shared_ptr<SlabAlloc<_Alloc>> slab_list_allocator_;
 
     uint32_t device_idx_;
 };
@@ -728,10 +728,11 @@ SlabHash<_Key, _Value, _Hash, _Alloc>::SlabHash(
       device_idx_(device_idx),
       bucket_list_head_(nullptr) {
     // allocate an initialize the allocator:
+    allocator_ = std::make_shared<_Alloc>();
     pair_allocator_ =
             std::make_shared<MemoryAlloc<thrust::pair<_Key, _Value>, _Alloc>>(
                     max_keyvalue_count);
-    slab_list_allocator_ = std::make_shared<SlabAlloc>();
+    slab_list_allocator_ = std::make_shared<SlabAlloc<_Alloc>>();
 
     int32_t device_count = 0;
     CHECK_CUDA(cudaGetDeviceCount(&device_count));
@@ -739,7 +740,7 @@ SlabHash<_Key, _Value, _Hash, _Alloc>::SlabHash(
     CHECK_CUDA(cudaSetDevice(device_idx_));
 
     // allocating initial buckets:
-    CHECK_CUDA(cudaMalloc(&bucket_list_head_, sizeof(Slab) * num_buckets_));
+    bucket_list_head_ = allocator_->template allocate<Slab>(num_buckets_);
     CHECK_CUDA(
             cudaMemset(bucket_list_head_, 0xFF, sizeof(Slab) * num_buckets_));
 
@@ -751,7 +752,7 @@ SlabHash<_Key, _Value, _Hash, _Alloc>::SlabHash(
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
 SlabHash<_Key, _Value, _Hash, _Alloc>::~SlabHash() {
     CHECK_CUDA(cudaSetDevice(device_idx_));
-    CHECK_CUDA(cudaFree(bucket_list_head_));
+    allocator_->template free(bucket_list_head_);
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
@@ -788,17 +789,15 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Remove(_Key* keys,
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
 double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 0) {
     uint32_t* h_bucket_count = new uint32_t[num_buckets_];
-    uint32_t* d_bucket_count;
-    CHECK_CUDA(cudaMalloc((void**)&d_bucket_count,
-                          sizeof(uint32_t) * num_buckets_));
+    uint32_t* d_bucket_count =
+            allocator_->template allocate<uint32_t>(num_buckets_);
     CHECK_CUDA(cudaMemset(d_bucket_count, 0, sizeof(uint32_t) * num_buckets_));
 
     const auto& dynamic_alloc = gpu_context_.get_slab_alloc_ctx();
     const uint32_t num_super_blocks = dynamic_alloc.num_super_blocks_;
     uint32_t* h_count_super_blocks = new uint32_t[num_super_blocks];
-    uint32_t* d_count_super_blocks;
-    CHECK_CUDA(cudaMalloc((void**)&d_count_super_blocks,
-                          sizeof(uint32_t) * num_super_blocks));
+    uint32_t* d_count_super_blocks =
+            allocator_->template allocate<uint32_t>(num_super_blocks);
     CHECK_CUDA(cudaMemset(d_count_super_blocks, 0,
                           sizeof(uint32_t) * num_super_blocks));
     //---------------------------------
@@ -841,8 +840,8 @@ double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 0) {
             double(total_elements_stored * (sizeof(_Key) + sizeof(_Value))) /
             double(total_mem_units * WARP_WIDTH * sizeof(uint32_t));
 
-    if (d_count_super_blocks) CHECK_CUDA(cudaFree(d_count_super_blocks));
-    if (d_bucket_count) CHECK_CUDA(cudaFree(d_bucket_count));
+    allocator_->template free<uint32_t>(d_count_super_blocks);
+    allocator_->template free<uint32_t>(d_bucket_count);
     delete[] h_bucket_count;
     delete[] h_count_super_blocks;
 
