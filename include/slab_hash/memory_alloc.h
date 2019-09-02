@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <vector>
+#include "allocator.h"
 
 /**
  * Memory allocation and free are expensive on GPU.
@@ -18,7 +19,7 @@
 #include "../helper_cuda.h"
 #include "config.h"
 
-#define CUDA_DEBUG_ENABLE_ASSERTION_
+#define _CUDA_DEBUG_ENABLE_ASSERTION
 template <typename T>
 class MemoryAllocContext {
 public:
@@ -86,21 +87,24 @@ __global__ void ResetMemoryAllocKernel(MemoryAllocContext<T> ctx) {
     }
 }
 
-template <typename T>
+template <typename T, class Alloc = CudaAllocator>
 class MemoryAlloc {
 public:
     int max_capacity_;
     MemoryAllocContext<T> gpu_context_;
+    Alloc allocator_;
 
 public:
     MemoryAlloc(int max_capacity) {
         max_capacity_ = max_capacity;
         gpu_context_.max_capacity_ = max_capacity;
-        CHECK_CUDA(cudaMalloc(&(gpu_context_.heap_counter_), sizeof(int)));
-        CHECK_CUDA(
-                cudaMalloc(&(gpu_context_.heap_), sizeof(int) * max_capacity_));
-        CHECK_CUDA(
-                cudaMalloc(&(gpu_context_.data_), sizeof(T) * max_capacity_));
+
+        gpu_context_.heap_counter_ =
+                allocator_.template allocate<int>(size_t(1));
+        gpu_context_.heap_ =
+                allocator_.template allocate<ptr_t>(size_t(max_capacity_));
+        gpu_context_.data_ =
+                allocator_.template allocate<T>(size_t(max_capacity_));
 
         const int blocks = (max_capacity_ + 128 - 1) / 128;
         const int threads = 128;
@@ -115,9 +119,9 @@ public:
     }
 
     ~MemoryAlloc() {
-        CHECK_CUDA(cudaFree(gpu_context_.heap_counter_));
-        CHECK_CUDA(cudaFree(gpu_context_.heap_));
-        CHECK_CUDA(cudaFree(gpu_context_.data_));
+        allocator_.template free<int>(gpu_context_.heap_counter_);
+        allocator_.template free<ptr_t>(gpu_context_.heap_);
+        allocator_.template free<T>(gpu_context_.data_);
     }
 
     std::vector<int> DownloadHeap() {

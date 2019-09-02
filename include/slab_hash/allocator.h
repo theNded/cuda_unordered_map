@@ -5,10 +5,10 @@ class Allocator {
 public:
     Allocator(int device_id = 0) : device_id_(device_id) {}
     template <typename T>
-    virtual T* allocate(size_t size) = 0;
+    T* allocate(size_t size) {}
 
     template <typename T>
-    virtual void free(T* ptr) = 0;
+    void free(T* ptr) {}
 
 protected:
     int device_id_;
@@ -18,14 +18,14 @@ class CudaAllocator : public Allocator {
 public:
     CudaAllocator(int device_id = 0) : Allocator(device_id) {}
     template <typename T>
-    T* allocate(size_t size) override {
+    T* allocate(size_t size) {
         T* ptr;
         CHECK_CUDA(cudaMalloc(&ptr, sizeof(T) * size));
         return ptr;
     }
 
     template <typename T>
-    void free(T* ptr) override {
+    void free(T* ptr) {
         CHECK_CUDA(cudaFree(ptr));
     }
 };
@@ -36,7 +36,7 @@ public:
     PyTorchAllocator(int device_id = 0) : Allocator(device_id) {}
 
     template <typename T>
-    T* allocate(size_t size) override {
+    T* allocate(size_t size)  {
         CHECK_CUDA(cudaGetDevice(&device_id_));
         auto options = torch::TensorOptions()
                                .dtype(torch::kInt8)
@@ -47,7 +47,7 @@ public:
     }
 
     template <typename T>
-    void free(T* ptr) override {
+    void free(T* ptr)  {
         // let PyTorch handle this
     }
 
