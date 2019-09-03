@@ -247,7 +247,7 @@ private:
 /*
  * This class owns the memory for the allocator on the device
  */
-template <class _Alloc = CudaAllocator>
+template <class _Alloc>
 class SlabAlloc {
 private:
     // a pointer to each super-block

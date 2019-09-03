@@ -72,7 +72,7 @@ struct DataTupleGPU {
         size = new_size;
     }
 
-    void Upload(const DataTupleCPU &data, bool only_keys = false) {
+    void Upload(DataTupleCPU &data, uint8_t only_keys = false) {
         assert(size == data.keys.size());
         CHECK_CUDA(cudaMemcpy(keys, data.keys.data(), sizeof(KeyT) * size,
                               cudaMemcpyHostToDevice));
@@ -80,7 +80,8 @@ struct DataTupleGPU {
             CHECK_CUDA(cudaMemcpy(values, data.values.data(),
                                   sizeof(ValueT) * size,
                                   cudaMemcpyHostToDevice));
-            CHECK_CUDA(cudaMemcpy(masks, data.masks.data(),
+            auto data_ptr = data.masks.data();
+            CHECK_CUDA(cudaMemcpy(masks, data_ptr,
                                   sizeof(uint8_t) * size,
                                   cudaMemcpyHostToDevice));
         }
@@ -92,7 +93,8 @@ struct DataTupleGPU {
                               cudaMemcpyDeviceToHost));
         CHECK_CUDA(cudaMemcpy(data.values.data(), values, sizeof(ValueT) * size,
                               cudaMemcpyDeviceToHost));
-        CHECK_CUDA(cudaMemcpy(data.masks.data(), masks, sizeof(uint8_t) * size,
+        CHECK_CUDA(cudaMemcpy(data.masks.data(), (void*)masks,
+                              sizeof(uint8_t) * size,
                               cudaMemcpyDeviceToHost));
     }
 
@@ -197,7 +199,7 @@ public:
                                std::move(query_data_gt));
     }
 
-    static bool CheckQueryResult(const std::vector<uint32_t> &values,
+    static uint8_t CheckQueryResult(const std::vector<uint32_t> &values,
                                  const std::vector<uint8_t> &masks,
                                  const std::vector<uint32_t> &values_gt,
                                  const std::vector<uint8_t> &masks_gt) {
@@ -260,7 +262,7 @@ int TestInsert(TestDataHelperGPU &data_generator) {
     query_data_gpu.Download(query_data_cpu);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
-    bool query_correct = data_generator.CheckQueryResult(
+    uint8_t query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
     if (!query_correct) return -1;
@@ -293,7 +295,7 @@ int TestRemove(TestDataHelperGPU &data_generator) {
     query_data_gpu.Download(query_data_cpu);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
-    bool query_correct = data_generator.CheckQueryResult(
+    uint8_t query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
     if (!query_correct) return -1;
@@ -347,7 +349,7 @@ int TestConflict(TestDataHelperGPU &data_generator) {
     query_data_gpu.Download(query_data_cpu);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
-    bool query_correct = data_generator.CheckQueryResult(
+    uint8_t query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
     if (!query_correct) return -1;

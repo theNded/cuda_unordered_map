@@ -42,6 +42,11 @@ struct hash {
 /* Lightweight wrapper to handle host input */
 /* Key supports elementary types: int, long, etc. */
 /* Value supports arbitrary types in theory. */
+/* std::vector<bool> is specialized: it stores only one bit per element
+ * We have to use uint8_t instead to read and write masks
+ * https://en.wikipedia.org/w/index.php?title=Sequence_container_(C%2B%2B)&oldid=767869909#Specialization_for_bool
+ */
+
 template <typename Key,
           typename Value,
           typename Hash = hash<Key>,
@@ -78,8 +83,8 @@ public:
                  uint8_t* output_masks,
                  int num_keys);
 
-    float Remove(thrust::device_vector<Key>& input_keys);
     float Remove(const std::vector<Key>& input_keys);
+    float Remove(thrust::device_vector<Key>& input_keys);
     float Remove(Key* input_keys, int num_keys);
 
     float ComputeLoadFactor(int flag = 0);

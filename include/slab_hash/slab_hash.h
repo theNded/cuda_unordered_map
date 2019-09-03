@@ -35,10 +35,7 @@ public:
 template <typename _Key, typename _Value, typename _Hash>
 class SlabHashContext;
 
-template <typename _Key,
-          typename _Value,
-          typename _Hash,
-          class _Alloc = CudaAllocator>
+template <typename _Key, typename _Value, typename _Hash, class _Alloc>
 class SlabHash {
 public:
     SlabHash(const uint32_t max_bucket_count,
@@ -49,8 +46,8 @@ public:
 
     double ComputeLoadFactor(int flag);
 
-    void Insert(_Key* keys, _Value* values, uint32_t num_keys);
-    void Search(_Key* keys, _Value* values, uint8_t* founds, uint32_t num_keys);
+    void Insert(_Key* input_keys, _Value* values, uint32_t num_keys);
+    void Search(_Key* keys, _Value* values, uint8_t* masks, uint32_t num_keys);
     void Remove(_Key* keys, uint32_t num_keys);
     void GetIterators(iterator_t* iterators);
 
@@ -83,21 +80,23 @@ public:
                                 pair_allocator_ctx);
 
     /* Core SIMT operations */
-    __device__ thrust::pair<iterator_t, bool> Insert(bool& lane_active,
-                                                     const uint32_t lane_id,
-                                                     const uint32_t bucket_id,
-                                                     const _Key& key,
-                                                     const _Value& value);
+    __device__ thrust::pair<iterator_t, uint8_t> Insert(
+            uint8_t& lane_active,
+            const uint32_t lane_id,
+            const uint32_t bucket_id,
+            const _Key& key,
+            const _Value& value);
 
-    __device__ thrust::pair<iterator_t, bool> Search(bool& lane_active,
-                                                     const uint32_t lane_id,
-                                                     const uint32_t bucket_id,
-                                                     const _Key& key);
+    __device__ thrust::pair<iterator_t, uint8_t> Search(
+            uint8_t& lane_active,
+            const uint32_t lane_id,
+            const uint32_t bucket_id,
+            const _Key& key);
 
-    __device__ bool Remove(bool& lane_active,
-                           const uint32_t lane_id,
-                           const uint32_t bucket_id,
-                           const _Key& key);
+    __device__ uint8_t Remove(uint8_t& lane_active,
+                              const uint32_t lane_id,
+                              const uint32_t bucket_id,
+                              const _Key& key);
 
     /* Hash function */
     __device__ __host__ uint32_t ComputeBucket(const _Key& key) const;
@@ -188,7 +187,7 @@ SlabHashContext<_Key, _Value, _Hash>::WarpSyncKey(const _Key& key,
 template <typename _Key, typename _Value, typename _Hash>
 __device__ int32_t SlabHashContext<_Key, _Value, _Hash>::WarpFindKey(
         const _Key& key, const uint32_t lane_id, const ptr_t ptr) {
-    bool is_lane_found =
+    uint8_t is_lane_found =
             /* select key lanes */
             ((1 << lane_id) & PAIR_PTR_LANES_MASK)
             /* validate key addrs */
@@ -202,7 +201,7 @@ __device__ int32_t SlabHashContext<_Key, _Value, _Hash>::WarpFindKey(
 template <typename _Key, typename _Value, typename _Hash>
 __device__ __forceinline__ int32_t
 SlabHashContext<_Key, _Value, _Hash>::WarpFindEmpty(const ptr_t ptr) {
-    bool is_lane_empty = (ptr == EMPTY_PAIR_PTR);
+    uint8_t is_lane_empty = (ptr == EMPTY_PAIR_PTR);
 
     return __ffs(__ballot_sync(PAIR_PTR_LANES_MASK, is_lane_empty)) - 1;
 }
@@ -220,8 +219,8 @@ __device__ __forceinline__ void SlabHashContext<_Key, _Value, _Hash>::FreeSlab(
 }
 
 template <typename _Key, typename _Value, typename _Hash>
-__device__ thrust::pair<iterator_t, bool>
-SlabHashContext<_Key, _Value, _Hash>::Search(bool& to_search,
+__device__ thrust::pair<iterator_t, uint8_t>
+SlabHashContext<_Key, _Value, _Hash>::Search(uint8_t& to_search,
                                              const uint32_t lane_id,
                                              const uint32_t bucket_id,
                                              const _Key& query_key) {
@@ -230,7 +229,7 @@ SlabHashContext<_Key, _Value, _Hash>::Search(bool& to_search,
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
 
     iterator_t iterator = NULL_ITERATOR;
-    bool mask = false;
+    uint8_t mask = false;
 
     /** > Loop when we have active lanes **/
     while ((work_queue = __ballot_sync(ACTIVE_LANES_MASK, to_search))) {
@@ -297,8 +296,8 @@ SlabHashContext<_Key, _Value, _Hash>::Search(bool& to_search,
  * WE DO NOT ALLOW DUPLICATE KEYS
  */
 template <typename _Key, typename _Value, typename _Hash>
-__device__ thrust::pair<iterator_t, bool>
-SlabHashContext<_Key, _Value, _Hash>::Insert(bool& to_be_inserted,
+__device__ thrust::pair<iterator_t, uint8_t>
+SlabHashContext<_Key, _Value, _Hash>::Insert(uint8_t& to_be_inserted,
                                              const uint32_t lane_id,
                                              const uint32_t bucket_id,
                                              const _Key& key,
@@ -308,7 +307,7 @@ SlabHashContext<_Key, _Value, _Hash>::Insert(bool& to_be_inserted,
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
 
     iterator_t iterator = NULL_ITERATOR;
-    bool mask = false;
+    uint8_t mask = false;
 
     /** WARNING: Allocation should be finished in warp,
      * results are unexpected otherwise **/
@@ -426,16 +425,16 @@ SlabHashContext<_Key, _Value, _Hash>::Insert(bool& to_be_inserted,
 }
 
 template <typename _Key, typename _Value, typename _Hash>
-__device__ bool SlabHashContext<_Key, _Value, _Hash>::Remove(
-        bool& to_be_deleted,
-        const uint32_t lane_id,
-        const uint32_t bucket_id,
-        const _Key& key) {
+__device__ uint8_t
+SlabHashContext<_Key, _Value, _Hash>::Remove(uint8_t& to_be_deleted,
+                                             const uint32_t lane_id,
+                                             const uint32_t bucket_id,
+                                             const _Key& key) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = 0;
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
 
-    bool mask = false;
+    uint8_t mask = false;
 
     /** > Loop when we have active lanes **/
     while ((work_queue = __ballot_sync(ACTIVE_LANES_MASK, to_be_deleted))) {
@@ -519,7 +518,7 @@ __global__ void SearchKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
     /* Initialize the memory allocator on each warp */
     slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
 
-    bool lane_active = false;
+    uint8_t lane_active = false;
     uint32_t bucket_id = 0;
     _Key key;
 
@@ -529,11 +528,11 @@ __global__ void SearchKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    thrust::pair<iterator_t, bool> result =
+    thrust::pair<iterator_t, uint8_t> result =
             slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key);
 
     if (tid < num_queries) {
-        bool found = result.second;
+        uint8_t found = result.second;
         founds[tid] = found;
         values[tid] = found ? slab_hash_ctx.get_pair_alloc_ctx()
                                       .extract(result.first)
@@ -556,7 +555,7 @@ __global__ void InsertKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
 
     slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
 
-    bool lane_active = false;
+    uint8_t lane_active = false;
     uint32_t bucket_id = 0;
     _Key key;
     _Value value;
@@ -584,7 +583,7 @@ __global__ void RemoveKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
 
     slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
 
-    bool lane_active = false;
+    uint8_t lane_active = false;
     uint32_t bucket_id = 0;
     _Key key;
 

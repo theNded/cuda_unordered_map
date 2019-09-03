@@ -74,7 +74,7 @@ struct DataTupleThrust {
         size = new_size;
     }
 
-    void Upload(const DataTupleCPU &data, bool only_keys = false) {
+    void Upload(const DataTupleCPU &data, uint8_t only_keys = false) {
         assert(size == data.keys.size());
         keys = data.keys;
         if (!only_keys) {
@@ -194,7 +194,7 @@ public:
                                std::move(query_data_gt));
     }
 
-    static bool CheckQueryResult(const std::vector<uint32_t> &values,
+    static uint8_t CheckQueryResult(const std::vector<uint32_t> &values,
                                  const std::vector<uint8_t> &masks,
                                  const std::vector<uint32_t> &values_gt,
                                  const std::vector<uint8_t> &masks_gt) {
@@ -254,7 +254,7 @@ int TestInsert(TestDataHelperThrust &data_generator) {
     query_data_gpu.Download(query_data_cpu);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
-    bool query_correct = data_generator.CheckQueryResult(
+    uint8_t query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
     if (!query_correct) return -1;
@@ -286,7 +286,7 @@ int TestRemove(TestDataHelperThrust &data_generator) {
     query_data_gpu.Download(query_data_cpu);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
-    bool query_correct = data_generator.CheckQueryResult(
+    uint8_t query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
     if (!query_correct) return -1;
@@ -339,7 +339,7 @@ int TestConflict(TestDataHelperThrust &data_generator) {
     query_data_gpu.Download(query_data_cpu);
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
-    bool query_correct = data_generator.CheckQueryResult(
+    uint8_t query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
     if (!query_correct) return -1;

@@ -87,7 +87,7 @@ __global__ void ResetMemoryAllocKernel(MemoryAllocContext<T> ctx) {
     }
 }
 
-template <typename T, class Alloc = CudaAllocator>
+template <typename T, class Alloc>
 class MemoryAlloc {
 public:
     int max_capacity_;
