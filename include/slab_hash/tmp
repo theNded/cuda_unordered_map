@@ -1,0 +1,25 @@
+template <typename _Key, typename _Value, typename _Hash>
+__global__ void SearchKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
+                             _Key* keys,
+                             _Value* values,
+                             uint8_t* founds,
+                             uint32_t num_queries) {
+template <typename _Key, typename _Value, typename _Hash>
+__global__ void InsertKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
+                             _Key* keys,
+                             _Value* values,
+                             uint32_t num_keys) {
+template <typename _Key, typename _Value, typename _Hash>
+__global__ void RemoveKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
+                             _Key* keys,
+                             uint32_t num_keys) {
+template <typename _Key, typename _Value, typename _Hash>
+__global__ void GetIteratorsKernel(
+        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
+        iterator_t* iterators,
+        uint32_t* iterator_count,
+        uint32_t num_buckets) {
+template <typename _Key, typename _Value, typename _Hash>
+__global__ void CountBucketElemsKernel(
+        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
+        uint32_t* bucket_elem_counts) {

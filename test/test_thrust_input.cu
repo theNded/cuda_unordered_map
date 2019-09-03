@@ -233,6 +233,7 @@ public:
 };
 
 int TestInsert(TestDataHelperThrust &data_generator) {
+    CudaTimer timer;
     float time;
     UnorderedMap<KeyT, ValueT> hash_table(data_generator.keys_pool_size_);
 
@@ -240,20 +241,28 @@ int TestInsert(TestDataHelperThrust &data_generator) {
             data_generator.keys_pool_size_ / 2, 0.4f);
 
     auto &insert_data_gpu = std::get<0>(insert_query_data_tuple);
-    time = hash_table.Insert(insert_data_gpu.keys, insert_data_gpu.values);
+
+    timer.Start();
+    hash_table.Insert(insert_data_gpu.keys, insert_data_gpu.values);
+    time = timer.Stop();
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data_gpu.size) / (time * 1000.0));
-    printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
+    printf("1) Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     auto &query_data_gpu = std::get<1>(insert_query_data_tuple);
     auto &query_data_cpu_gt = std::get<2>(insert_query_data_tuple);
-    time = hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                             query_data_gpu.masks);
+
+    timer.Start();
+    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
+                      query_data_gpu.masks);
+    time = timer.Stop();
+    printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
+           double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
+
     DataTupleCPU query_data_cpu;
     query_data_cpu.Resize(query_data_gpu.size);
     query_data_gpu.Download(query_data_cpu);
-    printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
-           double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
+   
     uint8_t query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
@@ -263,48 +272,61 @@ int TestInsert(TestDataHelperThrust &data_generator) {
 }
 
 int TestRemove(TestDataHelperThrust &data_generator) {
+    CudaTimer timer;
     float time;
     UnorderedMap<KeyT, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
             data_generator.keys_pool_size_ / 2, 1.0f);
-
     auto &insert_data_gpu = std::get<0>(insert_query_data_tuple);
-    time = hash_table.Insert(insert_data_gpu.keys, insert_data_gpu.values);
+
+    timer.Start();
+    hash_table.Insert(insert_data_gpu.keys, insert_data_gpu.values);
+    time = timer.Stop();
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
-           double(insert_data_gpu.size) / (time * 1000.0));
-    printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
+            double(insert_data_gpu.size) / (time * 1000.0));
+    printf("1) Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     auto &query_data_gpu = std::get<1>(insert_query_data_tuple);
     auto &query_data_cpu_gt = std::get<2>(insert_query_data_tuple);
-    time = hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                             query_data_gpu.masks);
+
+    timer.Start();
+    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
+                      query_data_gpu.masks);
+    time = timer.Stop();
+    printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
+           double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
 
     DataTupleCPU query_data_cpu;
     query_data_cpu.Resize(query_data_gpu.size);
     query_data_gpu.Download(query_data_cpu);
-    printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
-           double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
+    
     uint8_t query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
     if (!query_correct) return -1;
 
     /** Remove everything **/
-    time = hash_table.Remove(query_data_gpu.keys);
+    timer.Start();
+    hash_table.Remove(query_data_gpu.keys);
+    time = timer.Stop();
     printf("3) Hash table deleted in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gpu.size) / (time * 1000.0));
-    printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
+    printf("3) Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     auto query_masks_gt_after_deletion =
             std::vector<uint8_t>(query_data_cpu_gt.keys.size());
     std::fill(query_masks_gt_after_deletion.begin(),
               query_masks_gt_after_deletion.end(), 0);
-    time = hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                             query_data_gpu.masks);
+
+    timer.Start();
+    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
+                      query_data_gpu.masks);
+    time = timer.Stop();
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gpu.size) / (time * 1000.0));
+
     query_data_gpu.Download(query_data_cpu);
     query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
@@ -316,6 +338,7 @@ int TestRemove(TestDataHelperThrust &data_generator) {
 }
 
 int TestConflict(TestDataHelperThrust &data_generator) {
+    CudaTimer timer;
     float time;
     UnorderedMap<KeyT, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
@@ -324,21 +347,28 @@ int TestConflict(TestDataHelperThrust &data_generator) {
             data_generator.keys_pool_size_ / 2, 1.0f);
 
     auto &insert_data_gpu = std::get<0>(insert_query_data_tuple);
-    time = hash_table.Insert(insert_data_gpu.keys, insert_data_gpu.values);
+
+    timer.Start();
+    hash_table.Insert(insert_data_gpu.keys, insert_data_gpu.values);
+    time = timer.Stop();
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data_gpu.size) / (time * 1000.0));
-    printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
+    printf("1) Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     auto &query_data_gpu = std::get<1>(insert_query_data_tuple);
     auto &query_data_cpu_gt = std::get<2>(insert_query_data_tuple);
-    time = hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                             query_data_gpu.masks);
+
+    timer.Start();
+    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
+                      query_data_gpu.masks);
+    time = timer.Stop();
+    printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
+           double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
 
     DataTupleCPU query_data_cpu;
     query_data_cpu.Resize(query_data_gpu.size);
     query_data_gpu.Download(query_data_cpu);
-    printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
-           double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
+    
     uint8_t query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);
@@ -352,16 +382,21 @@ int TestConflict(TestDataHelperThrust &data_generator) {
     }
     insert_data_gpu.Upload(insert_data_cpu_duplicate);
 
-    time = hash_table.Insert(insert_data_gpu.keys, insert_data_gpu.values);
+    timer.Start();
+    hash_table.Insert(insert_data_gpu.keys, insert_data_gpu.values);
+    time = timer.Stop();
     printf("3) Hash table inserted in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data_gpu.size) / (time * 1000.0));
-    printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
+    printf("3) Load factor = %f\n", hash_table.ComputeLoadFactor());
 
-    time = hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                             query_data_gpu.masks);
-    query_data_gpu.Download(query_data_cpu);
+    timer.Start();
+    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
+                      query_data_gpu.masks);
+    time = timer.Stop();
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gpu.size) / (time * 1000.0));
+    query_data_gpu.Download(query_data_cpu);
+    
     query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
             query_data_cpu_gt.values, query_data_cpu_gt.masks);

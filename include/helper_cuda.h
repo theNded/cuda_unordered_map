@@ -27,3 +27,29 @@
             exit(EXIT_FAILURE);                                     \
         }                                                           \
     } while (0)
+
+class CudaTimer {
+public:
+    CudaTimer() {
+        CHECK_CUDA(cudaEventCreate(&start_));
+        CHECK_CUDA(cudaEventCreate(&stop_));
+    }
+    ~CudaTimer() {
+        CHECK_CUDA(cudaEventDestroy(start_));
+        CHECK_CUDA(cudaEventDestroy(stop_));
+    }
+
+    void Start() { CHECK_CUDA(cudaEventRecord(start_, 0)); }
+
+    float Stop() {
+        float time;
+        CHECK_CUDA(cudaEventRecord(stop_, 0));
+        CHECK_CUDA(cudaEventSynchronize(stop_));
+        CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
+        return time;
+    }
+
+private:
+    cudaEvent_t start_;
+    cudaEvent_t stop_;
+};

@@ -55,37 +55,32 @@ class UnorderedMap {
 public:
     UnorderedMap(uint32_t max_keys,
                  /* Preset hash table params to estimate bucket num */
-                 uint32_t keys_per_bucket = 15,
-                 float expected_occupancy_per_bucket = 0.6,
+                 uint32_t keys_per_bucket = 10,
+                 float expected_occupancy_per_bucket = 0.5,
                  /* CUDA device */
                  const uint32_t device_idx = 0);
     ~UnorderedMap();
 
-    /* We assert all memory buffers are allocated prior to the function call
-         @keys_device stores keys in Key[num_keys x D],
-         @[query]_values_device stores keys in Value[num_keys] */
-    /* query_values[i] is undefined (basically Value(0)) if mask[i] == 0 */
+    void Insert(thrust::device_vector<Key>& input_keys,
+                thrust::device_vector<Value>& input_values);
+    void Insert(const std::vector<Key>& input_keys,
+                const std::vector<Value>& input_values);
+    void Insert(Key* input_keys, Value* input_values, int num_keys);
 
-    float Insert(thrust::device_vector<Key>& input_keys,
-                 thrust::device_vector<Value>& input_values);
-    float Insert(const std::vector<Key>& input_keys,
-                 const std::vector<Value>& input_values);
-    float Insert(Key* input_keys, Value* input_values, int num_keys);
+    void Search(thrust::device_vector<Key>& input_keys,
+                thrust::device_vector<Value>& output_values,
+                thrust::device_vector<uint8_t>& output_masks);
+    void Search(const std::vector<Key>& input_keys,
+                std::vector<Value>& output_values,
+                std::vector<uint8_t>& output_masks);
+    void Search(Key* input_keys,
+                Value* output_values,
+                uint8_t* output_masks,
+                int num_keys);
 
-    float Search(thrust::device_vector<Key>& input_keys,
-                 thrust::device_vector<Value>& output_values,
-                 thrust::device_vector<uint8_t>& output_masks);
-    float Search(const std::vector<Key>& input_keys,
-                 std::vector<Value>& output_values,
-                 std::vector<uint8_t>& output_masks);
-    float Search(Key* input_keys,
-                 Value* output_values,
-                 uint8_t* output_masks,
-                 int num_keys);
-
-    float Remove(const std::vector<Key>& input_keys);
-    float Remove(thrust::device_vector<Key>& input_keys);
-    float Remove(Key* input_keys, int num_keys);
+    void Remove(const std::vector<Key>& input_keys);
+    void Remove(thrust::device_vector<Key>& input_keys);
+    void Remove(Key* input_keys, int num_keys);
 
     float ComputeLoadFactor(int flag = 0);
 
@@ -94,11 +89,7 @@ private:
     uint32_t num_buckets_;
     uint32_t cuda_device_idx_;
 
-    /* Timer */
-    cudaEvent_t start_;
-    cudaEvent_t stop_;
-
-    /* Handled by CUDA */
+    /* Buffer for input cpu data (e.g. from std::vector) */
     Key* input_key_buffer_;
     Value* input_value_buffer_;
     Key* output_key_buffer_;
@@ -136,9 +127,6 @@ UnorderedMap<Key, Value, Hash, Alloc>::UnorderedMap(
     output_value_buffer_ = allocator_->template allocate<Value>(max_keys_);
     output_mask_buffer_ = allocator_->template allocate<uint8_t>(max_keys_);
 
-    CHECK_CUDA(cudaEventCreate(&start_));
-    CHECK_CUDA(cudaEventCreate(&stop_));
-
     // allocate an initialize the allocator:
     slab_hash_ = std::make_shared<SlabHash<Key, Value, Hash, Alloc>>(
             num_buckets_, max_keys_, cuda_device_idx_);
@@ -154,16 +142,12 @@ UnorderedMap<Key, Value, Hash, Alloc>::~UnorderedMap() {
     allocator_->template free<Key>(output_key_buffer_);
     allocator_->template free<Value>(output_value_buffer_);
     allocator_->template free<uint8_t>(output_mask_buffer_);
-
-    CHECK_CUDA(cudaEventDestroy(start_));
-    CHECK_CUDA(cudaEventDestroy(stop_));
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::Insert(
+void UnorderedMap<Key, Value, Hash, Alloc>::Insert(
         const std::vector<Key>& input_keys,
         const std::vector<Value>& input_values) {
-    float time;
     assert(input_values.size() == input_keys.size());
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
@@ -174,57 +158,35 @@ float UnorderedMap<Key, Value, Hash, Alloc>::Insert(
                           sizeof(Value) * input_values.size(),
                           cudaMemcpyHostToDevice));
 
-    CHECK_CUDA(cudaEventRecord(start_, 0));
-
     slab_hash_->Insert(input_key_buffer_, input_value_buffer_,
                        input_keys.size());
-
-    CHECK_CUDA(cudaEventRecord(stop_, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop_));
-    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
-    return time;
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::Insert(
+void UnorderedMap<Key, Value, Hash, Alloc>::Insert(
         thrust::device_vector<Key>& input_keys,
         thrust::device_vector<Value>& input_values) {
-    float time;
     assert(input_values.size() == input_keys.size());
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaEventRecord(start_, 0));
-
     slab_hash_->Insert(thrust::raw_pointer_cast(input_keys.data()),
                        thrust::raw_pointer_cast(input_values.data()),
                        input_keys.size());
-
-    CHECK_CUDA(cudaEventRecord(stop_, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop_));
-    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
-    return time;
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::Insert(Key* input_keys,
-                                                    Value* input_values,
-                                                    int num_keys) {
-    float time;
+void UnorderedMap<Key, Value, Hash, Alloc>::Insert(Key* input_keys,
+                                                   Value* input_values,
+                                                   int num_keys) {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaEventRecord(start_, 0));
     slab_hash_->Insert(input_keys, input_values, num_keys);
-    CHECK_CUDA(cudaEventRecord(stop_, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop_));
-    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
-    return time;
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::Search(
+void UnorderedMap<Key, Value, Hash, Alloc>::Search(
         const std::vector<Key>& input_keys,
         std::vector<Value>& output_values,
         std::vector<uint8_t>& output_masks) {
-    float time;
     assert(output_values.size() == input_keys.size());
     assert(output_masks.size() == input_keys.size());
 
@@ -237,14 +199,8 @@ float UnorderedMap<Key, Value, Hash, Alloc>::Search(
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
                           sizeof(uint8_t) * input_keys.size()));
 
-    CHECK_CUDA(cudaEventRecord(start_, 0));
-
     slab_hash_->Search(input_key_buffer_, output_value_buffer_,
                        output_mask_buffer_, input_keys.size());
-
-    CHECK_CUDA(cudaEventRecord(stop_, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop_));
-    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
 
     CHECK_CUDA(cudaMemcpy(output_values.data(), output_value_buffer_,
                           sizeof(Value) * input_keys.size(),
@@ -253,97 +209,55 @@ float UnorderedMap<Key, Value, Hash, Alloc>::Search(
                           sizeof(uint8_t) * input_keys.size(),
                           cudaMemcpyDeviceToHost));
     CHECK_CUDA(cudaDeviceSynchronize());
-    return time;
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::Search(
+void UnorderedMap<Key, Value, Hash, Alloc>::Search(
         thrust::device_vector<Key>& input_keys,
         thrust::device_vector<Value>& output_values,
         thrust::device_vector<uint8_t>& output_masks) {
-    float time;
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-
     thrust::fill(output_masks.begin(), output_masks.end(), 0);
-    CHECK_CUDA(cudaEventRecord(start_, 0));
-
     slab_hash_->Search(thrust::raw_pointer_cast(input_keys.data()),
                        thrust::raw_pointer_cast(output_values.data()),
                        thrust::raw_pointer_cast(output_masks.data()),
                        input_keys.size());
-
-    CHECK_CUDA(cudaEventRecord(stop_, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop_));
-    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
-    return time;
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::Search(Key* input_keys,
-                                                    Value* output_values,
-                                                    uint8_t* output_masks,
-                                                    int num_keys) {
-    float time;
+void UnorderedMap<Key, Value, Hash, Alloc>::Search(Key* input_keys,
+                                                   Value* output_values,
+                                                   uint8_t* output_masks,
+                                                   int num_keys) {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemset(output_masks, 0, sizeof(uint8_t) * num_keys));
-    CHECK_CUDA(cudaEventRecord(start_, 0));
-
     slab_hash_->Search(input_keys, output_values, output_masks, num_keys);
-
-    CHECK_CUDA(cudaEventRecord(stop_, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop_));
-    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
-    return time;
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::Remove(
+void UnorderedMap<Key, Value, Hash, Alloc>::Remove(
         const std::vector<Key>& input_keys) {
-    float time;
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
                           sizeof(Key) * input_keys.size(),
                           cudaMemcpyHostToDevice));
-
-    CHECK_CUDA(cudaEventRecord(start_, 0));
-
     slab_hash_->Remove(input_key_buffer_, input_keys.size());
-
-    CHECK_CUDA(cudaEventRecord(stop_, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop_));
-    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
-    return time;
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::Remove(
+void UnorderedMap<Key, Value, Hash, Alloc>::Remove(
         thrust::device_vector<Key>& input_keys) {
-    float time;
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaEventRecord(start_, 0));
 
     slab_hash_->Remove(thrust::raw_pointer_cast(input_keys.data()),
                        input_keys.size());
-    CHECK_CUDA(cudaEventRecord(stop_, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop_));
-    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
-
-    return time;
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::Remove(Key* input_keys,
-                                                    int num_keys) {
-    float time;
+void UnorderedMap<Key, Value, Hash, Alloc>::Remove(Key* input_keys,
+                                                   int num_keys) {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaEventRecord(start_, 0));
-
     slab_hash_->Remove(input_keys, num_keys);
-    CHECK_CUDA(cudaEventRecord(stop_, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop_));
-    CHECK_CUDA(cudaEventElapsedTime(&time, start_, stop_));
-
-    return time;
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
