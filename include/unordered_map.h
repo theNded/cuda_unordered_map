@@ -73,10 +73,7 @@ public:
     void Search(const std::vector<Key>& input_keys,
                 std::vector<Value>& output_values,
                 std::vector<uint8_t>& output_masks);
-    void Search(Key* input_keys,
-                Value* output_values,
-                uint8_t* output_masks,
-                int num_keys);
+    std::pair<Value*, uint8_t*> Search(Key* input_keys, int num_keys);
 
     void Remove(const std::vector<Key>& input_keys);
     void Remove(thrust::device_vector<Key>& input_keys);
@@ -187,15 +184,17 @@ void UnorderedMap<Key, Value, Hash, Alloc>::Search(
         const std::vector<Key>& input_keys,
         std::vector<Value>& output_values,
         std::vector<uint8_t>& output_masks) {
-    assert(output_values.size() == input_keys.size());
-    assert(output_masks.size() == input_keys.size());
+    if (output_values.size() < input_keys.size()) {
+        output_values.resize(input_keys.size());
+    }
+    if (output_masks.size() < input_keys.size()) {
+        output_masks.resize(input_keys.size());
+    }
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
                           sizeof(Key) * input_keys.size(),
                           cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemset(output_value_buffer_, 0xFF,
-                          sizeof(Value) * input_keys.size()));
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
                           sizeof(uint8_t) * input_keys.size()));
 
@@ -225,13 +224,14 @@ void UnorderedMap<Key, Value, Hash, Alloc>::Search(
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-void UnorderedMap<Key, Value, Hash, Alloc>::Search(Key* input_keys,
-                                                   Value* output_values,
-                                                   uint8_t* output_masks,
-                                                   int num_keys) {
+std::pair<Value*, uint8_t*> UnorderedMap<Key, Value, Hash, Alloc>::Search(
+        Key* input_keys, int num_keys) {
+    assert(num_keys < max_keys_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemset(output_masks, 0, sizeof(uint8_t) * num_keys));
-    slab_hash_->Search(input_keys, output_values, output_masks, num_keys);
+    CHECK_CUDA(cudaMemset(output_mask_buffer_, 0, sizeof(uint8_t) * num_keys));
+    slab_hash_->Search(input_keys, output_value_buffer_, output_mask_buffer_,
+                       num_keys);
+    return std::make_pair(output_value_buffer_, output_mask_buffer_);
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
