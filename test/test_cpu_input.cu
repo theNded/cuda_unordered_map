@@ -22,13 +22,14 @@
 #include <iostream>
 #include <random>
 #include <vector>
-#include "coordinate_hash_map.cuh"
+#include "unordered_map.h"
+#include "coordinate.h"
 
 using KeyT = uint32_t;
 constexpr size_t D = 7;
 using ValueT = uint32_t;
-using HashFunc = CoordinateHashFunc<KeyT, D>;
 using KeyTD = Coordinate<KeyT, D>;
+using HashFunc = CoordinateHashFunc<KeyT, D>;
 
 struct DataTupleCPU {
     std::vector<KeyTD> keys;
@@ -179,7 +180,9 @@ public:
 };
 
 int TestInsert(TestDataHelperCPU &data_generator) {
+    CudaTimer timer;
     float time;
+    
     UnorderedMap<KeyTD, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
@@ -187,15 +190,19 @@ int TestInsert(TestDataHelperCPU &data_generator) {
             data_generator.keys_pool_size_ / 2, 0.4f);
 
     auto &insert_data = std::get<0>(insert_query_data_tuple);
-    time = hash_table.Insert(insert_data.keys, insert_data.values);
+    timer.Start();
+    hash_table.Insert(insert_data.keys, insert_data.values);
+    time = timer.Stop();
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     auto &query_data = std::get<1>(insert_query_data_tuple);
     auto &query_data_gt = std::get<2>(insert_query_data_tuple);
-    time = hash_table.Search(query_data.keys, query_data.values,
+    timer.Start();
+    hash_table.Search(query_data.keys, query_data.values,
                              query_data.masks);
+    time = timer.Stop();
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data.keys.size()) / (time * 1000.0));
     bool query_correct = data_generator.CheckQueryResult(
@@ -208,6 +215,7 @@ int TestInsert(TestDataHelperCPU &data_generator) {
 
 int TestRemove(TestDataHelperCPU &data_generator) {
     float time;
+    CudaTimer timer;
     UnorderedMap<KeyTD, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
@@ -215,15 +223,19 @@ int TestRemove(TestDataHelperCPU &data_generator) {
             data_generator.keys_pool_size_ / 2, 1.0f);
 
     auto &insert_data = std::get<0>(insert_query_data_tuple);
-    time = hash_table.Insert(insert_data.keys, insert_data.values);
+    timer.Start();
+    hash_table.Insert(insert_data.keys, insert_data.values);
+    time = timer.Stop();
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     auto &query_data = std::get<1>(insert_query_data_tuple);
     auto &query_data_gt = std::get<2>(insert_query_data_tuple);
-    time = hash_table.Search(query_data.keys, query_data.values,
-                             query_data.masks);
+    timer.Start();
+    hash_table.Search(query_data.keys, query_data.values,
+                      query_data.masks);
+    time = timer.Stop();
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data.keys.size()) / (time * 1000.0));
     bool query_correct = data_generator.CheckQueryResult(
@@ -232,7 +244,9 @@ int TestRemove(TestDataHelperCPU &data_generator) {
     if (!query_correct) return -1;
 
     /** Remove everything **/
-    time = hash_table.Remove(query_data.keys);
+    timer.Start();
+    hash_table.Remove(query_data.keys);
+    time = timer.Stop();
     printf("3) Hash table deleted in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
@@ -241,8 +255,10 @@ int TestRemove(TestDataHelperCPU &data_generator) {
             std::vector<uint8_t>(query_data.keys.size());
     std::fill(query_masks_gt_after_deletion.begin(),
               query_masks_gt_after_deletion.end(), 0);
-    time = hash_table.Search(query_data.keys, query_data.values,
+    time = timer.Start();
+    hash_table.Search(query_data.keys, query_data.values,
                              query_data.masks);
+    time = timer.Stop();
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
     query_correct = data_generator.CheckQueryResult(
@@ -256,6 +272,7 @@ int TestRemove(TestDataHelperCPU &data_generator) {
 
 int TestConflict(TestDataHelperCPU &data_generator) {
     float time;
+    CudaTimer timer;
     UnorderedMap<KeyTD, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
@@ -263,15 +280,19 @@ int TestConflict(TestDataHelperCPU &data_generator) {
             data_generator.keys_pool_size_ / 2, 1.0f);
 
     auto &insert_data = std::get<0>(insert_query_data_tuple);
-    time = hash_table.Insert(insert_data.keys, insert_data.values);
+    timer.Start();
+    hash_table.Insert(insert_data.keys, insert_data.values);
+    time = timer.Stop();
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     auto &query_data = std::get<1>(insert_query_data_tuple);
     auto &query_data_gt = std::get<2>(insert_query_data_tuple);
-    time = hash_table.Search(query_data.keys, query_data.values,
+    timer.Start();
+    hash_table.Search(query_data.keys, query_data.values,
                              query_data.masks);
+    time = timer.Stop();
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data.keys.size()) / (time * 1000.0));
     bool query_correct = data_generator.CheckQueryResult(
@@ -285,13 +306,18 @@ int TestConflict(TestDataHelperCPU &data_generator) {
     for (auto &v : insert_values_duplicate) {
         v += 1;
     }
-    time = hash_table.Insert(insert_data.keys, insert_values_duplicate);
+
+    timer.Start();
+    hash_table.Insert(insert_data.keys, insert_values_duplicate);
+    time = timer.Stop();
     printf("3) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
-    time = hash_table.Search(query_data.keys, query_data.values,
+    timer.Start();
+    hash_table.Search(query_data.keys, query_data.values,
                              query_data.masks);
+    time = timer.Stop();
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
     query_correct = data_generator.CheckQueryResult(
