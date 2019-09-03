@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Saman Ashkiani
+ * Copyright 2019 Saman Ashkiani,
  * Modified by Wei Dong (2019)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,6 @@ struct hash {
  * We have to use uint8_t instead to read and write masks
  * https://en.wikipedia.org/w/index.php?title=Sequence_container_(C%2B%2B)&oldid=767869909#Specialization_for_bool
  */
-
 template <typename Key,
           typename Value,
           typename Hash = hash<Key>,
@@ -67,9 +66,8 @@ public:
                 const std::vector<Value>& input_values);
     void Insert(Key* input_keys, Value* input_values, int num_keys);
 
-    void Search(thrust::device_vector<Key>& input_keys,
-                thrust::device_vector<Value>& output_values,
-                thrust::device_vector<uint8_t>& output_masks);
+    std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
+    Search(thrust::device_vector<Key>& input_keys);
     void Search(const std::vector<Key>& input_keys,
                 std::vector<Value>& output_values,
                 std::vector<uint8_t>& output_masks);
@@ -211,16 +209,23 @@ void UnorderedMap<Key, Value, Hash, Alloc>::Search(
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-void UnorderedMap<Key, Value, Hash, Alloc>::Search(
-        thrust::device_vector<Key>& input_keys,
-        thrust::device_vector<Value>& output_values,
-        thrust::device_vector<uint8_t>& output_masks) {
+std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
+UnorderedMap<Key, Value, Hash, Alloc>::Search(
+        thrust::device_vector<Key>& input_keys) {
+    assert(input_keys.size() < max_keys_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
+
+    thrust::device_vector<Value> output_values(
+            output_value_buffer_, output_value_buffer_ + input_keys.size());
+    thrust::device_vector<uint8_t> output_masks(
+            output_mask_buffer_, output_mask_buffer_ + input_keys.size());
     thrust::fill(output_masks.begin(), output_masks.end(), 0);
+
     slab_hash_->Search(thrust::raw_pointer_cast(input_keys.data()),
                        thrust::raw_pointer_cast(output_values.data()),
                        thrust::raw_pointer_cast(output_masks.data()),
                        input_keys.size());
+    return std::make_pair(output_values, output_masks);
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>

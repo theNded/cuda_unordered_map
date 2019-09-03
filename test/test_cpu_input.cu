@@ -255,7 +255,7 @@ int TestRemove(TestDataHelperCPU &data_generator) {
             std::vector<uint8_t>(query_data.keys.size());
     std::fill(query_masks_gt_after_deletion.begin(),
               query_masks_gt_after_deletion.end(), 0);
-    time = timer.Start();
+    timer.Start();
     hash_table.Search(query_data.keys, query_data.values,
                              query_data.masks);
     time = timer.Stop();

@@ -253,14 +253,15 @@ int TestInsert(TestDataHelperThrust &data_generator) {
     auto &query_data_cpu_gt = std::get<2>(insert_query_data_tuple);
 
     timer.Start();
-    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                      query_data_gpu.masks);
+    auto pair = hash_table.Search(query_data_gpu.keys);
     time = timer.Stop();
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
 
-    DataTupleCPU query_data_cpu;
+    DataTupleCPU query_data_cpu;    
     query_data_cpu.Resize(query_data_gpu.size);
+    query_data_gpu.values = pair.first;
+    query_data_gpu.masks = pair.second;
     query_data_gpu.Download(query_data_cpu);
    
     uint8_t query_correct = data_generator.CheckQueryResult(
@@ -292,14 +293,15 @@ int TestRemove(TestDataHelperThrust &data_generator) {
     auto &query_data_cpu_gt = std::get<2>(insert_query_data_tuple);
 
     timer.Start();
-    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                      query_data_gpu.masks);
+    auto pair = hash_table.Search(query_data_gpu.keys);
     time = timer.Stop();
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
 
     DataTupleCPU query_data_cpu;
     query_data_cpu.Resize(query_data_gpu.size);
+    query_data_gpu.values = pair.first;
+    query_data_gpu.masks = pair.second;
     query_data_gpu.Download(query_data_cpu);
     
     uint8_t query_correct = data_generator.CheckQueryResult(
@@ -321,12 +323,12 @@ int TestRemove(TestDataHelperThrust &data_generator) {
               query_masks_gt_after_deletion.end(), 0);
 
     timer.Start();
-    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                      query_data_gpu.masks);
+    pair = hash_table.Search(query_data_gpu.keys);
     time = timer.Stop();
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gpu.size) / (time * 1000.0));
-
+    query_data_gpu.values = pair.first;
+    query_data_gpu.masks = pair.second;
     query_data_gpu.Download(query_data_cpu);
     query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
@@ -359,14 +361,15 @@ int TestConflict(TestDataHelperThrust &data_generator) {
     auto &query_data_cpu_gt = std::get<2>(insert_query_data_tuple);
 
     timer.Start();
-    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                      query_data_gpu.masks);
+    auto pair = hash_table.Search(query_data_gpu.keys);
     time = timer.Stop();
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
 
     DataTupleCPU query_data_cpu;
     query_data_cpu.Resize(query_data_gpu.size);
+    query_data_gpu.values = pair.first;
+    query_data_gpu.masks = pair.second;
     query_data_gpu.Download(query_data_cpu);
     
     uint8_t query_correct = data_generator.CheckQueryResult(
@@ -390,11 +393,12 @@ int TestConflict(TestDataHelperThrust &data_generator) {
     printf("3) Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     timer.Start();
-    hash_table.Search(query_data_gpu.keys, query_data_gpu.values,
-                      query_data_gpu.masks);
+    pair = hash_table.Search(query_data_gpu.keys);
     time = timer.Stop();
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gpu.size) / (time * 1000.0));
+    query_data_gpu.values = pair.first;
+    query_data_gpu.masks = pair.second;
     query_data_gpu.Download(query_data_cpu);
     
     query_correct = data_generator.CheckQueryResult(
