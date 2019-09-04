@@ -200,11 +200,12 @@ int TestInsert(TestDataHelperCPU &data_generator) {
     auto &query_data = std::get<1>(insert_query_data_tuple);
     auto &query_data_gt = std::get<2>(insert_query_data_tuple);
     timer.Start();
-    hash_table.Search(query_data.keys, query_data.values,
-                             query_data.masks);
+    auto pair = hash_table.Search(query_data.keys);
     time = timer.Stop();
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data.keys.size()) / (time * 1000.0));
+    thrust::copy(pair.first.begin(), pair.first.end(), query_data.values.begin());
+    thrust::copy(pair.second.begin(), pair.second.end(), query_data.masks.begin());       
     bool query_correct = data_generator.CheckQueryResult(
             query_data.values, query_data.masks, query_data_gt.values,
             query_data_gt.masks);
@@ -233,11 +234,12 @@ int TestRemove(TestDataHelperCPU &data_generator) {
     auto &query_data = std::get<1>(insert_query_data_tuple);
     auto &query_data_gt = std::get<2>(insert_query_data_tuple);
     timer.Start();
-    hash_table.Search(query_data.keys, query_data.values,
-                      query_data.masks);
+    auto pair = hash_table.Search(query_data.keys);
     time = timer.Stop();
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data.keys.size()) / (time * 1000.0));
+    thrust::copy(pair.first.begin(), pair.first.end(), query_data.values.begin());
+    thrust::copy(pair.second.begin(), pair.second.end(), query_data.masks.begin());       
     bool query_correct = data_generator.CheckQueryResult(
             query_data.values, query_data.masks, query_data_gt.values,
             query_data_gt.masks);
@@ -256,11 +258,12 @@ int TestRemove(TestDataHelperCPU &data_generator) {
     std::fill(query_masks_gt_after_deletion.begin(),
               query_masks_gt_after_deletion.end(), 0);
     timer.Start();
-    hash_table.Search(query_data.keys, query_data.values,
-                             query_data.masks);
+    pair = hash_table.Search(query_data.keys);
     time = timer.Stop();
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
+    thrust::copy(pair.first.begin(), pair.first.end(), query_data.values.begin());
+    thrust::copy(pair.second.begin(), pair.second.end(), query_data.masks.begin());       
     query_correct = data_generator.CheckQueryResult(
             query_data.values, query_data.masks, query_data_gt.values,
             query_masks_gt_after_deletion);
@@ -290,11 +293,12 @@ int TestConflict(TestDataHelperCPU &data_generator) {
     auto &query_data = std::get<1>(insert_query_data_tuple);
     auto &query_data_gt = std::get<2>(insert_query_data_tuple);
     timer.Start();
-    hash_table.Search(query_data.keys, query_data.values,
-                             query_data.masks);
+    auto pair = hash_table.Search(query_data.keys);
     time = timer.Stop();
     printf("2) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data.keys.size()) / (time * 1000.0));
+    thrust::copy(pair.first.begin(), pair.first.end(), query_data.values.begin());
+    thrust::copy(pair.second.begin(), pair.second.end(), query_data.masks.begin());
     bool query_correct = data_generator.CheckQueryResult(
             query_data.values, query_data.masks, query_data_gt.values,
             query_data_gt.masks);
@@ -315,11 +319,13 @@ int TestConflict(TestDataHelperCPU &data_generator) {
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
 
     timer.Start();
-    hash_table.Search(query_data.keys, query_data.values,
-                             query_data.masks);
+    pair = hash_table.Search(query_data.keys);
     time = timer.Stop();
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gt.keys.size()) / (time * 1000.0));
+    thrust::copy(pair.first.begin(), pair.first.end(), query_data.values.begin());
+    thrust::copy(pair.second.begin(), pair.second.end(), query_data.masks.begin());
+
     query_correct = data_generator.CheckQueryResult(
             query_data.values, query_data.masks, query_data_gt.values,
             query_data_gt.masks);

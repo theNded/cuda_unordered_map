@@ -267,8 +267,8 @@ int TestInsert(TestDataHelperGPU &data_generator) {
 
     DataTupleCPU query_data_cpu;
     // WARNING: memory leak! fix this ds later
-    query_data_gpu.values = pair.first;
-    query_data_gpu.masks = pair.second;
+    query_data_gpu.values = thrust::raw_pointer_cast(pair.first.data());
+    query_data_gpu.masks = thrust::raw_pointer_cast(pair.second.data());
     query_data_cpu.Resize(query_data_gpu.size);
     query_data_gpu.Download(query_data_cpu);
     
@@ -309,8 +309,8 @@ int TestRemove(TestDataHelperGPU &data_generator) {
            double(query_data_cpu_gt.keys.size()) / (time * 1000.0));
    
     DataTupleCPU query_data_cpu;
-    query_data_gpu.values = pair.first;
-    query_data_gpu.masks = pair.second;
+    query_data_gpu.values = thrust::raw_pointer_cast(pair.first.data());
+    query_data_gpu.masks = thrust::raw_pointer_cast(pair.second.data());
     query_data_cpu.Resize(query_data_gpu.size);
     query_data_gpu.Download(query_data_cpu);
     uint8_t query_correct = data_generator.CheckQueryResult(
@@ -337,8 +337,8 @@ int TestRemove(TestDataHelperGPU &data_generator) {
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gpu.size) / (time * 1000.0));
 
-    query_data_gpu.values = pair.first;
-    query_data_gpu.masks = pair.second;
+    query_data_gpu.values = thrust::raw_pointer_cast(pair.first.data());
+    query_data_gpu.masks = thrust::raw_pointer_cast(pair.second.data());
     query_data_gpu.Download(query_data_cpu);
     query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
@@ -378,8 +378,8 @@ int TestConflict(TestDataHelperGPU &data_generator) {
 
     DataTupleCPU query_data_cpu;  
     query_data_cpu.Resize(query_data_gpu.size);
-    query_data_gpu.values = pair.first;
-    query_data_gpu.masks = pair.second;
+    query_data_gpu.values = thrust::raw_pointer_cast(pair.first.data());
+    query_data_gpu.masks = thrust::raw_pointer_cast(pair.second.data());
     query_data_gpu.Download(query_data_cpu);
 
     uint8_t query_correct = data_generator.CheckQueryResult(
@@ -408,9 +408,8 @@ int TestConflict(TestDataHelperGPU &data_generator) {
     time = timer.Stop();
     printf("4) Hash table searched in %.3f ms (%.3f M queries/s)\n", time,
            double(query_data_gpu.size) / (time * 1000.0));
-
-    query_data_gpu.values = pair.first;
-    query_data_gpu.masks = pair.second;
+    query_data_gpu.values = thrust::raw_pointer_cast(pair.first.data());
+    query_data_gpu.masks = thrust::raw_pointer_cast(pair.second.data());    
     query_data_gpu.Download(query_data_cpu);
     query_correct = data_generator.CheckQueryResult(
             query_data_cpu.values, query_data_cpu.masks,
