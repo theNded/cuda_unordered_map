@@ -1,6 +1,6 @@
 /*
  * Copyright 2019 Saman Ashkiani
- *
+ * Modified 2019 by Wei Dong
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -52,8 +52,11 @@ public:
 
     double ComputeLoadFactor(int flag);
 
-    /* Simplistic input output: no iterators, and success mask is only for
-     * search. Minimal memory footprint */
+    /* Simplistic output: no iterators, and success mask is only provided
+     * for search.
+     * All the outputs are READ ONLY: change to these output will NOT change the
+     * internal hash table.
+     */
     void Insert(_Key* input_keys, _Value* input_values, uint32_t num_keys);
     void Search(_Key* input_keys,
                 _Value* output_values,
@@ -61,9 +64,11 @@ public:
                 uint32_t num_keys);
     void Remove(_Key* input_keys, uint32_t num_keys);
 
-    /* std style verbose input output: return success masks for all operations,
-     * and iterators for insert and search (for remove operation they are
-     * invalid). A little bit larger memory consumption, suitable for debug.
+    /* Verbose output (similar to std): return success masks for all operations,
+     * and iterators for insert and search (not for remove operation, as
+     * iterators are invalid after erase).
+     * Output iterators supports READ/WRITE: change to these output will
+     * DIRECTLY change the internal hash table.
      */
     void _Insert(_Key* input_keys,
                  _Value* input_values,
@@ -76,7 +81,14 @@ public:
                  uint32_t num_keys);
     void _Remove(_Key* input_keys, uint8_t* output_masks, uint32_t num_keys);
 
-    void GetIterators(_Iterator<_Key, _Value>* iterators);
+    /* Parallel collect all the iterators from begin to end */
+    void GetIterators(_Iterator<_Key, _Value>* iterators,
+                      uint32_t& num_iterators);
+    /* Parallel extract keys and values from iterators */
+    void ExtractIterators(_Iterator<_Key, _Value>* iterators,
+                          _Key* keys,
+                          _Value* values,
+                          uint32_t num_iterators);
 
 private:
     Slab* bucket_list_head_;
@@ -158,17 +170,17 @@ SlabHash<_Key, _Value, _Hash, _Alloc>::SlabHash(
     : num_buckets_(max_bucket_count),
       device_idx_(device_idx),
       bucket_list_head_(nullptr) {
-    // allocate an initialize the allocator:
-    allocator_ = std::make_shared<_Alloc>();
-    pair_allocator_ =
-            std::make_shared<MemoryAlloc<thrust::pair<_Key, _Value>, _Alloc>>(
-                    max_keyvalue_count);
-    slab_list_allocator_ = std::make_shared<SlabAlloc<_Alloc>>();
-
     int32_t device_count = 0;
     CHECK_CUDA(cudaGetDeviceCount(&device_count));
     assert(device_idx_ < device_count);
     CHECK_CUDA(cudaSetDevice(device_idx_));
+
+    // allocate an initialize the allocator:
+    allocator_ = std::make_shared<_Alloc>(device_idx);
+    pair_allocator_ =
+            std::make_shared<MemoryAlloc<thrust::pair<_Key, _Value>, _Alloc>>(
+                    max_keyvalue_count);
+    slab_list_allocator_ = std::make_shared<SlabAlloc<_Alloc>>();
 
     // allocating initial buckets:
     bucket_list_head_ = allocator_->template allocate<Slab>(num_buckets_);
