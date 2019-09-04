@@ -35,6 +35,12 @@ public:
 template <typename _Key, typename _Value, typename _Hash>
 class SlabHashContext;
 
+template <typename _Key, typename _Value>
+using _Pair = thrust::pair<_Key, _Value>;
+
+template <typename _Key, typename _Value>
+using _Iterator = _Pair<_Key, _Value>*;
+
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
 class SlabHash {
 public:
@@ -61,16 +67,16 @@ public:
      */
     void _Insert(_Key* input_keys,
                  _Value* input_values,
-                 iterator_t* output_iterators,
+                 _Iterator<_Key, _Value>* output_iterators,
                  uint8_t* output_masks,
                  uint32_t num_keys);
     void _Search(_Key* input_keys,
-                 iterator_t* output_iterators,
+                 _Iterator<_Key, _Value>* output_iterators,
                  uint8_t* output_masks,
                  uint32_t num_keys);
     void _Remove(_Key* input_keys, uint8_t* output_masks, uint32_t num_keys);
 
-    void GetIterators(iterator_t* iterators);
+    void GetIterators(_Iterator<_Key, _Value>* iterators);
 
 private:
     Slab* bucket_list_head_;
@@ -79,8 +85,7 @@ private:
     SlabHashContext<_Key, _Value, _Hash> gpu_context_;
 
     std::shared_ptr<_Alloc> allocator_;
-    std::shared_ptr<MemoryAlloc<thrust::pair<_Key, _Value>, _Alloc>>
-            pair_allocator_;
+    std::shared_ptr<MemoryAlloc<_Pair<_Key, _Value>, _Alloc>> pair_allocator_;
     std::shared_ptr<SlabAlloc<_Alloc>> slab_list_allocator_;
 
     uint32_t device_idx_;
@@ -109,14 +114,14 @@ __global__ void _InsertKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* input_keys,
         _Value* input_values,
-        iterator_t* output_iterators,
+        _Iterator<_Key, _Value>* output_iterators,
         uint8_t* output_masks,
         uint32_t num_keys);
 template <typename _Key, typename _Value, typename _Hash>
 __global__ void _SearchKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* input_keys,
-        iterator_t* output_iterators,
+        _Iterator<_Key, _Value>* output_iterators,
         uint8_t* output_masks,
         uint32_t num_keys);
 template <typename _Key, typename _Value, typename _Hash>
@@ -129,7 +134,7 @@ __global__ void _RemoveKernel(
 template <typename _Key, typename _Value, typename _Hash>
 __global__ void GetIteratorsKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        iterator_t* output_iterators,
+        _Iterator<_Key, _Value>* output_iterators,
         uint32_t* output_iterator_count,
         uint32_t num_buckets);
 template <typename _Key, typename _Value, typename _Hash>
@@ -213,11 +218,12 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Remove(_Key* keys,
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-void SlabHash<_Key, _Value, _Hash, _Alloc>::_Insert(_Key* keys,
-                                                    _Value* values,
-                                                    iterator_t* iterators,
-                                                    uint8_t* masks,
-                                                    uint32_t num_keys) {
+void SlabHash<_Key, _Value, _Hash, _Alloc>::_Insert(
+        _Key* keys,
+        _Value* values,
+        _Iterator<_Key, _Value>* iterators,
+        uint8_t* masks,
+        uint32_t num_keys) {
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     // calling the kernel for bulk build:
     CHECK_CUDA(cudaSetDevice(device_idx_));
@@ -226,10 +232,11 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::_Insert(_Key* keys,
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-void SlabHash<_Key, _Value, _Hash, _Alloc>::_Search(_Key* keys,
-                                                    iterator_t* iterators,
-                                                    uint8_t* masks,
-                                                    uint32_t num_keys) {
+void SlabHash<_Key, _Value, _Hash, _Alloc>::_Search(
+        _Key* keys,
+        _Iterator<_Key, _Value>* iterators,
+        uint8_t* masks,
+        uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     _SearchKernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>(
@@ -842,7 +849,7 @@ template <typename _Key, typename _Value, typename _Hash>
 __global__ void _SearchKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* keys,
-        iterator_t* iterators,
+        _Iterator<_Key, _Value>* iterators,
         uint8_t* masks,
         uint32_t num_queries) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -870,7 +877,8 @@ __global__ void _SearchKernel(
             slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key);
 
     if (tid < num_queries) {
-        iterators[tid] = result.first;
+        iterators[tid] =
+                slab_hash_ctx.get_pair_alloc_ctx().extract_ptr(result.first);
         masks[tid] = result.second;
     }
 }
@@ -880,7 +888,7 @@ __global__ void _InsertKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* keys,
         _Value* values,
-        iterator_t* iterators,
+        _Iterator<_Key, _Value>* iterators,
         uint8_t* masks,
         uint32_t num_keys) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -908,7 +916,8 @@ __global__ void _InsertKernel(
             slab_hash_ctx.Insert(lane_active, lane_id, bucket_id, key, value);
 
     if (tid < num_keys) {
-        iterators[tid] = result.first;
+        iterators[tid] =
+                slab_hash_ctx.get_pair_alloc_ctx().extract_ptr(result.first);
         masks[tid] = result.second;
     }
 }

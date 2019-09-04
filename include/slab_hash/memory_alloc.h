@@ -76,6 +76,10 @@ public:
 #endif
         return data_[ptr];
     }
+
+    /* Returns the real ptr that can be accessed (instead of the internal ptr)
+     */
+    __device__ T *extract_ext_ptr(ptr_t ptr) { return data_ + ptr; }
 };
 
 template <typename T>
