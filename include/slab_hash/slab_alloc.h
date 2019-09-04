@@ -297,7 +297,7 @@ public:
         // initializing the slab context:
         slab_alloc_context_.Setup(super_blocks_, hash_coef_);
     }
-    ~SlabAlloc() { allocator_->template free<uint32_t>(super_blocks_); }
+    ~SlabAlloc() { allocator_->template deallocate<uint32_t>(super_blocks_); }
 
     const SlabAllocContext& getContext() const { return slab_alloc_context_; }
 };

@@ -10,7 +10,7 @@ public:
     T* allocate(size_t size) {}
 
     template <typename T>
-    void free(T* ptr) {}
+    void deallocate(T* ptr) {}
 
 protected:
     int device_id_;
@@ -27,7 +27,7 @@ public:
     }
 
     template <typename T>
-    void free(T* ptr) {
+    void deallocate(T* ptr) {
         CHECK_CUDA(cudaFree(ptr));
     }
 };
@@ -49,7 +49,7 @@ public:
     }
 
     template <typename T>
-    void free(T* ptr)  {
+    void deallocate(T* ptr)  {
         // let PyTorch handle this
     }
 

@@ -178,7 +178,7 @@ SlabHash<_Key, _Value, _Hash, _Alloc>::SlabHash(
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
 SlabHash<_Key, _Value, _Hash, _Alloc>::~SlabHash() {
     CHECK_CUDA(cudaSetDevice(device_idx_));
-    allocator_->template free(bucket_list_head_);
+    allocator_->template deallocate(bucket_list_head_);
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
@@ -300,8 +300,8 @@ double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 0) {
             double(total_elements_stored * (sizeof(_Key) + sizeof(_Value))) /
             double(total_mem_units * WARP_WIDTH * sizeof(uint32_t));
 
-    allocator_->template free<uint32_t>(d_count_super_blocks);
-    allocator_->template free<uint32_t>(d_bucket_count);
+    allocator_->template deallocate<uint32_t>(d_count_super_blocks);
+    allocator_->template deallocate<uint32_t>(d_bucket_count);
     delete[] h_bucket_count;
     delete[] h_count_super_blocks;
 

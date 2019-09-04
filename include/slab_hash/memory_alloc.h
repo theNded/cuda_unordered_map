@@ -120,9 +120,9 @@ public:
     }
 
     ~MemoryAlloc() {
-        allocator_->template free<int>(gpu_context_.heap_counter_);
-        allocator_->template free<ptr_t>(gpu_context_.heap_);
-        allocator_->template free<T>(gpu_context_.data_);
+        allocator_->template deallocate<int>(gpu_context_.heap_counter_);
+        allocator_->template deallocate<ptr_t>(gpu_context_.heap_);
+        allocator_->template deallocate<T>(gpu_context_.data_);
     }
 
     std::vector<int> DownloadHeap() {

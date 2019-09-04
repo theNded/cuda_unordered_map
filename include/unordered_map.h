@@ -131,12 +131,12 @@ template <typename Key, typename Value, typename Hash, class Alloc>
 UnorderedMap<Key, Value, Hash, Alloc>::~UnorderedMap() {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
 
-    allocator_->template free<Key>(input_key_buffer_);
-    allocator_->template free<Value>(input_value_buffer_);
+    allocator_->template deallocate<Key>(input_key_buffer_);
+    allocator_->template deallocate<Value>(input_value_buffer_);
 
-    allocator_->template free<Key>(output_key_buffer_);
-    allocator_->template free<Value>(output_value_buffer_);
-    allocator_->template free<uint8_t>(output_mask_buffer_);
+    allocator_->template deallocate<Key>(output_key_buffer_);
+    allocator_->template deallocate<Value>(output_value_buffer_);
+    allocator_->template deallocate<uint8_t>(output_mask_buffer_);
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
