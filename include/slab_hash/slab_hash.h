@@ -272,7 +272,11 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::_Remove(_Key* keys,
 /* Debug usage */
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
 std::vector<int> SlabHash<_Key, _Value, _Hash, _Alloc>::CountElemsPerBucket() {
-    thrust::device_vector<uint32_t> elems_per_bucket(num_buckets_);
+    auto elems_per_bucket_buffer =
+            allocator_->template allocate<uint32_t>(num_buckets_);
+
+    thrust::device_vector<uint32_t> elems_per_bucket(
+            elems_per_bucket_buffer, elems_per_bucket_buffer + num_buckets_);
     thrust::fill(elems_per_bucket.begin(), elems_per_bucket.end(), 0);
 
     const uint32_t blocksize = 128;
@@ -283,6 +287,7 @@ std::vector<int> SlabHash<_Key, _Value, _Hash, _Alloc>::CountElemsPerBucket() {
     std::vector<int> result(num_buckets_);
     thrust::copy(elems_per_bucket.begin(), elems_per_bucket.end(),
                  result.begin());
+    allocator_->template deallocate<uint32_t>(elems_per_bucket_buffer);
     return std::move(result);
 }
 
@@ -291,12 +296,14 @@ double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 1) {
     auto elems_per_bucket = CountElemsPerBucket();
     int total_elems_stored = std::accumulate(elems_per_bucket.begin(),
                                              elems_per_bucket.end(), 0);
+
     slab_list_allocator_->getContext() = gpu_context_.get_slab_alloc_ctx();
-    int total_mem_units =
-            slab_list_allocator_->CountSlabsPerSuperblock() + num_buckets_;
-    double load_factor =
-            double(total_elems_stored * (sizeof(_Key) + sizeof(_Value))) /
-            double(total_mem_units * WARP_WIDTH * sizeof(uint32_t));
+    auto slabs_per_bucket = slab_list_allocator_->CountSlabsPerSuperblock();
+    int total_slabs_stored = std::accumulate(
+            slabs_per_bucket.begin(), slabs_per_bucket.end(), num_buckets_);
+
+    double load_factor = double(total_elems_stored) /
+                         double(total_slabs_stored * WARP_WIDTH);
 
     return load_factor;
 }
