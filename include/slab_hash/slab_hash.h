@@ -305,7 +305,7 @@ double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 1) {
     int num_mem_units = dynamic_alloc.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 32;
     int num_cuda_blocks = (num_mem_units + blocksize - 1) / blocksize;
     compute_stats_allocators<<<num_cuda_blocks, blocksize>>>(
-            d_count_super_blocks, gpu_context_);
+            d_count_super_blocks, dynamic_alloc);
 
     CHECK_CUDA(cudaMemcpy(h_count_super_blocks, d_count_super_blocks,
                           sizeof(uint32_t) * num_super_blocks,
@@ -1073,23 +1073,17 @@ __global__ void CountElemsPerBucketKernel(
  * TODO: this should be moved into allocator's codebase (violation of
  * layers)
  */
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void compute_stats_allocators(
-        uint32_t* d_count_super_block,
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx) {
+__global__ void compute_stats_allocators(uint32_t* d_count_super_block,
+                                         SlabAllocContext ctx) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
-    int num_bitmaps =
-            slab_hash_ctx.get_slab_alloc_ctx().NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
-            32;
+    int num_bitmaps = ctx.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 32;
     if (tid >= num_bitmaps) {
         return;
     }
 
-    for (int i = 0; i < slab_hash_ctx.get_slab_alloc_ctx().num_super_blocks_;
-         i++) {
-        uint32_t read_bitmap = *(
-                slab_hash_ctx.get_slab_alloc_ctx().get_ptr_for_bitmap(i, tid));
+    for (int i = 0; i < ctx.num_super_blocks_; i++) {
+        uint32_t read_bitmap = *(ctx.get_ptr_for_bitmap(i, tid));
         atomicAdd(&d_count_super_block[i], __popc(read_bitmap));
     }
 }
