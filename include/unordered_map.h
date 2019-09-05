@@ -1,6 +1,6 @@
 /*
  * Copyright 2019 Saman Ashkiani,
- * Modified by Wei Dong (2019)
+ * Modified 2019 by Wei Dong
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,13 +60,13 @@ public:
                  const uint32_t device_idx = 0);
     ~UnorderedMap();
 
+    /* READ ONLY output */
     void Insert(const std::vector<Key>& input_keys,
                 const std::vector<Value>& input_values);
     void Insert(thrust::device_vector<Key>& input_keys,
                 thrust::device_vector<Value>& input_values);
     void Insert(Key* input_keys, Value* input_values, int num_keys);
 
-    /* READ ONLY output */
     std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
     Search(const std::vector<Key>& input_keys);
     std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
@@ -74,16 +74,26 @@ public:
     std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
     Search(Key* input_keys, int num_keys);
 
-    /* READ & WRITE output iterators */
-    std::pair<thrust::device_vector<_Iterator<Key, Value>>,
-              thrust::device_vector<uint8_t>>
-    _Search(thrust::device_vector<Key>& input_keys);
-
     void Remove(const std::vector<Key>& input_keys);
     void Remove(thrust::device_vector<Key>& input_keys);
     void Remove(Key* input_keys, int num_keys);
 
-    float ComputeLoadFactor(int flag = 0);
+    /* READ & WRITE output iterators */
+    std::pair<thrust::device_vector<_Iterator<Key, Value>>,
+              thrust::device_vector<uint8_t>>
+    _Insert(thrust::device_vector<Key>& input_keys,
+            thrust::device_vector<Value>& input_values);
+
+    std::pair<thrust::device_vector<_Iterator<Key, Value>>,
+              thrust::device_vector<uint8_t>>
+    _Search(thrust::device_vector<Key>& input_keys);
+
+    thrust::device_vector<uint8_t> _Remove(
+            thrust::device_vector<Key>& input_keys);
+
+    /* Assistance functions */
+    float ComputeLoadFactor(int flag = 1);
+    std::vector<int> CountElemsPerBucket();
 
 private:
     uint32_t max_keys_;
@@ -298,6 +308,11 @@ UnorderedMap<Key, Value, Hash, Alloc>::_Search(
     thrust::device_vector<uint8_t> output_masks(
             output_mask_buffer_, output_mask_buffer_ + input_keys.size());
     return std::make_pair(output_iterators, output_masks);
+}
+
+template <typename Key, typename Value, typename Hash, class Alloc>
+std::vector<int> UnorderedMap<Key, Value, Hash, Alloc>::CountElemsPerBucket() {
+    return slab_hash_->CountElemsPerBucket();
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>

@@ -50,8 +50,6 @@ public:
 
     ~SlabHash();
 
-    double ComputeLoadFactor(int flag);
-
     /* Simplistic output: no iterators, and success mask is only provided
      * for search.
      * All the outputs are READ ONLY: change to these output will NOT change the
@@ -65,7 +63,8 @@ public:
     void Remove(_Key* input_keys, uint32_t num_keys);
 
     /* Verbose output (similar to std): return success masks for all operations,
-     * and iterators for insert and search (not for remove operation, as
+
+    * and iterators for insert and search (not for remove operation, as
      * iterators are invalid after erase).
      * Output iterators supports READ/WRITE: change to these output will
      * DIRECTLY change the internal hash table.
@@ -89,6 +88,11 @@ public:
                           _Key* keys,
                           _Value* values,
                           uint32_t num_iterators);
+
+    /* Debug usages */
+    std::vector<int> CountElemsPerBucket();
+
+    double ComputeLoadFactor(int flag);
 
 private:
     Slab* bucket_list_head_;
@@ -150,7 +154,7 @@ __global__ void GetIteratorsKernel(
         uint32_t* output_iterator_count,
         uint32_t num_buckets);
 template <typename _Key, typename _Value, typename _Hash>
-__global__ void CountBucketElemsKernel(
+__global__ void CountElemsPerBucketKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         uint32_t* bucket_elem_counts);
 
@@ -265,12 +269,28 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::_Remove(_Key* keys,
             <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, masks, num_keys);
 }
 
+/* Debug usage */
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 0) {
-    uint32_t* h_bucket_count = new uint32_t[num_buckets_];
-    uint32_t* d_bucket_count =
-            allocator_->template allocate<uint32_t>(num_buckets_);
-    CHECK_CUDA(cudaMemset(d_bucket_count, 0, sizeof(uint32_t) * num_buckets_));
+std::vector<int> SlabHash<_Key, _Value, _Hash, _Alloc>::CountElemsPerBucket() {
+    thrust::device_vector<uint32_t> elems_per_bucket(num_buckets_);
+    thrust::fill(elems_per_bucket.begin(), elems_per_bucket.end(), 0);
+
+    const uint32_t blocksize = 128;
+    const uint32_t num_blocks = (num_buckets_ * 32 + blocksize - 1) / blocksize;
+    CountElemsPerBucketKernel<_Key, _Value, _Hash><<<num_blocks, blocksize>>>(
+            gpu_context_, thrust::raw_pointer_cast(elems_per_bucket.data()));
+
+    std::vector<int> result(num_buckets_);
+    thrust::copy(elems_per_bucket.begin(), elems_per_bucket.end(),
+                 result.begin());
+    return std::move(result);
+}
+
+template <typename _Key, typename _Value, typename _Hash, class _Alloc>
+double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 1) {
+    auto elems_per_bucket = CountElemsPerBucket();
+    int total_elems_stored = std::accumulate(elems_per_bucket.begin(),
+                                             elems_per_bucket.end(), 0);
 
     const auto& dynamic_alloc = gpu_context_.get_slab_alloc_ctx();
     const uint32_t num_super_blocks = dynamic_alloc.num_super_blocks_;
@@ -279,28 +299,9 @@ double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 0) {
             allocator_->template allocate<uint32_t>(num_super_blocks);
     CHECK_CUDA(cudaMemset(d_count_super_blocks, 0,
                           sizeof(uint32_t) * num_super_blocks));
-    //---------------------------------
-    // counting the number of inserted elements:
-    const uint32_t blocksize = 128;
-    const uint32_t num_blocks = (num_buckets_ * 32 + blocksize - 1) / blocksize;
-    CountBucketElemsKernel<_Key, _Value, _Hash>
-            <<<num_blocks, blocksize>>>(gpu_context_, d_bucket_count);
-    CHECK_CUDA(cudaMemcpy(h_bucket_count, d_bucket_count,
-                          sizeof(uint32_t) * num_buckets_,
-                          cudaMemcpyDeviceToHost));
-
-    int total_elements_stored = 0;
-    for (int i = 0; i < num_buckets_; i++) {
-        total_elements_stored += h_bucket_count[i];
-    }
-
-    if (flag) {
-        printf("## Total elements stored: %d (%lu bytes).\n",
-               total_elements_stored,
-               total_elements_stored * (sizeof(_Key) + sizeof(_Value)));
-    }
 
     // counting total number of allocated memory units:
+    int blocksize = 128;
     int num_mem_units = dynamic_alloc.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 32;
     int num_cuda_blocks = (num_mem_units + blocksize - 1) / blocksize;
     compute_stats_allocators<<<num_cuda_blocks, blocksize>>>(
@@ -316,12 +317,10 @@ double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 0) {
         total_mem_units += h_count_super_blocks[i];
 
     double load_factor =
-            double(total_elements_stored * (sizeof(_Key) + sizeof(_Value))) /
+            double(total_elems_stored * (sizeof(_Key) + sizeof(_Value))) /
             double(total_mem_units * WARP_WIDTH * sizeof(uint32_t));
 
     allocator_->template deallocate<uint32_t>(d_count_super_blocks);
-    allocator_->template deallocate<uint32_t>(d_bucket_count);
-    delete[] h_bucket_count;
     delete[] h_count_super_blocks;
 
     return load_factor;
@@ -341,7 +340,8 @@ public:
                         const MemoryAllocContext<thrust::pair<_Key, _Value>>&
                                 pair_allocator_ctx);
 
-    /* Core SIMT operations, shared by both simplistic and verbose interfaces */
+    /* Core SIMT operations, shared by both simplistic and verbose
+     * interfaces */
     __device__ thrust::pair<iterator_t, uint8_t> Insert(
             uint8_t& lane_active,
             const uint32_t lane_id,
@@ -495,7 +495,8 @@ SlabHashContext<_Key, _Value, _Hash>::Search(uint8_t& to_search,
 
     /** > Loop when we have active lanes **/
     while ((work_queue = __ballot_sync(ACTIVE_LANES_MASK, to_search))) {
-        /** 0. Restart from linked list head if the last query is finished **/
+        /** 0. Restart from linked list head if the last query is finished
+         * **/
         curr_slab_ptr =
                 (prev_work_queue != work_queue) ? HEAD_SLAB_PTR : curr_slab_ptr;
         uint32_t src_lane = __ffs(work_queue) - 1;
@@ -582,7 +583,8 @@ SlabHashContext<_Key, _Value, _Hash>::Insert(uint8_t& to_be_inserted,
 
     /** > Loop when we have active lanes **/
     while ((work_queue = __ballot_sync(ACTIVE_LANES_MASK, to_be_inserted))) {
-        /** 0. Restart from linked list head if last insertion is finished **/
+        /** 0. Restart from linked list head if last insertion is finished
+         * **/
         curr_slab_ptr =
                 (prev_work_queue != work_queue) ? HEAD_SLAB_PTR : curr_slab_ptr;
         uint32_t src_lane = __ffs(work_queue) - 1;
@@ -1007,10 +1009,12 @@ __global__ void GetIteratorsKernel(
     /* uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32); */
     /* while (next != EMPTY_SLAB_PTR) { */
     /*     src_unit_data = */
-    /*             *slab_hash_ctx.get_unit_ptr_from_list_nodes(next, lane_id);
+    /*             *slab_hash_ctx.get_unit_ptr_from_list_nodes(next,
+     * lane_id);
      */
     /*     count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK, */
-    /*                                   src_unit_data != EMPTY_PAIR_PTR)); */
+    /*                                   src_unit_data != EMPTY_PAIR_PTR));
+     */
     /*     next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32); */
     /* } */
     /* // writing back the results: */
@@ -1023,7 +1027,7 @@ __global__ void GetIteratorsKernel(
  * bucket. The final results per bucket is stored in d_count_result array
  */
 template <typename _Key, typename _Value, typename _Hash>
-__global__ void CountBucketElemsKernel(
+__global__ void CountElemsPerBucketKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         uint32_t* bucket_elem_counts) {
     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -1066,7 +1070,8 @@ __global__ void CountBucketElemsKernel(
 /*
  * This kernel goes through all allocated bitmaps for a slab_hash_ctx's
  * allocator and store number of allocated slabs.
- * TODO: this should be moved into allocator's codebase (violation of layers)
+ * TODO: this should be moved into allocator's codebase (violation of
+ * layers)
  */
 template <typename _Key, typename _Value, typename _Hash>
 __global__ void compute_stats_allocators(

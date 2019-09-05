@@ -1,7 +1,7 @@
 /*
  * Copyright 2019 Saman Ashkiani
- *
- * findEmptyPerWarpLicensed under the Apache License, Version 2.0 (the
+ * Modified 2019 Wei Dong
+ * Licensed under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -196,6 +196,9 @@ int TestInsert(TestDataHelperCPU &data_generator) {
     printf("1) Hash table built in %.3f ms (%.3f M elements/s)\n", time,
            double(insert_data.keys.size()) / (time * 1000.0));
     printf("   Load factor = %f\n", hash_table.ComputeLoadFactor());
+    auto buckets_per_elem = hash_table.CountElemsPerBucket();
+    auto elems = std::accumulate(buckets_per_elem.begin(), buckets_per_elem.end(), 0);
+    std::cout << "elems = " << elems << "\n";
 
     auto &query_data = std::get<1>(insert_query_data_tuple);
     auto &query_data_gt = std::get<2>(insert_query_data_tuple);

@@ -244,6 +244,9 @@ private:
     uint32_t allocated_index_;  // to be asked via shuffle after
 };
 
+__global__ void CountSlabsPerSuperblockKernel(SlabAllocContext context,
+                                              uint32_t* slabs_per_superblock);
+
 /*
  * This class owns the memory for the allocator on the device
  */
@@ -267,8 +270,8 @@ public:
         hash_coef_ = rng();
 
         allocator_ = std::make_shared<_Alloc>();
-        // In the light version, we put num_super_blocks super blocks within a
-        // single array
+        // In the light version, we put num_super_blocks super blocks within
+        // a single array
         super_blocks_ = allocator_->template allocate<uint32_t>(
                 slab_alloc_context_.SUPER_BLOCK_SIZE_ *
                 slab_alloc_context_.num_super_blocks_);
@@ -300,4 +303,55 @@ public:
     ~SlabAlloc() { allocator_->template deallocate<uint32_t>(super_blocks_); }
 
     const SlabAllocContext& getContext() const { return slab_alloc_context_; }
+
+    std::vector<int> CountSlabsPerSuperblock() {
+        const uint32_t num_superblocks = slab_alloc_context_.num_super_blocks_;
+        uint32_t* _slab_per_superblock =
+                allocator_->template allocate<uint32_t>(num_superblocks);
+        thrust::device_vector<uint32_t> slab_per_superblock(
+                _slab_per_superblock, _slab_per_superblock + num_superblocks);
+        thrust::fill(slab_per_superblock.begin(), slab_per_superblock.end(), 0);
+
+        int blocksize = 128;
+        int num_mem_units =
+                slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 32;
+        int num_cuda_blocks = (num_mem_units + blocksize - 1) / blocksize;
+        CountSlabsPerSuperblockKernel<<<num_cuda_blocks, blocksize>>>(
+                slab_alloc_context_,
+                thrust::raw_pointer_cast(slab_per_superblock.data()));
+
+        std::vector<int> result(num_superblocks);
+        for (auto i = slab_per_superblock.begin();
+             i != slab_per_superblock.end(); ++i) {
+            std::cout << *i << "\n";
+        }
+        thrust::copy(slab_per_superblock.begin(), slab_per_superblock.end(),
+                     result.begin());
+        for (auto& count : result) {
+            std::cout << count << "\n";
+        }
+        allocator_->template deallocate<uint32_t>(_slab_per_superblock);
+        return std::move(result);
+    }
 };
+
+/*
+ * This kernel goes through all allocated bitmaps for a slab_hash_ctx's
+ * allocator and store number of allocated slabs.
+ * TODO: this should be moved into allocator's codebase (violation of
+ * layers)
+ */
+__global__ void CountSlabsPerSuperblockKernel(SlabAllocContext context,
+                                              uint32_t* slabs_per_superblock) {
+    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+
+    int num_bitmaps = context.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 32;
+    if (tid >= num_bitmaps) {
+        return;
+    }
+
+    for (int i = 0; i < context.num_super_blocks_; i++) {
+        uint32_t read_bitmap = *(context.get_ptr_for_bitmap(i, tid));
+        atomicAdd(&slabs_per_superblock[i], __popc(read_bitmap));
+    }
+}
