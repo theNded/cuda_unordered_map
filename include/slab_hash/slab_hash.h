@@ -291,37 +291,12 @@ double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 1) {
     auto elems_per_bucket = CountElemsPerBucket();
     int total_elems_stored = std::accumulate(elems_per_bucket.begin(),
                                              elems_per_bucket.end(), 0);
-
-    const auto& dynamic_alloc = gpu_context_.get_slab_alloc_ctx();
-    const uint32_t num_super_blocks = dynamic_alloc.num_super_blocks_;
-    uint32_t* h_count_super_blocks = new uint32_t[num_super_blocks];
-    uint32_t* d_count_super_blocks =
-            allocator_->template allocate<uint32_t>(num_super_blocks);
-    CHECK_CUDA(cudaMemset(d_count_super_blocks, 0,
-                          sizeof(uint32_t) * num_super_blocks));
-
-    // counting total number of allocated memory units:
-    int blocksize = 128;
-    int num_mem_units = dynamic_alloc.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 32;
-    int num_cuda_blocks = (num_mem_units + blocksize - 1) / blocksize;
-    compute_stats_allocators<<<num_cuda_blocks, blocksize>>>(
-            d_count_super_blocks, dynamic_alloc);
-
-    CHECK_CUDA(cudaMemcpy(h_count_super_blocks, d_count_super_blocks,
-                          sizeof(uint32_t) * num_super_blocks,
-                          cudaMemcpyDeviceToHost));
-
-    // computing load factor
-    int total_mem_units = num_buckets_;
-    for (int i = 0; i < num_super_blocks; i++)
-        total_mem_units += h_count_super_blocks[i];
-
+    slab_list_allocator_->getContext() = gpu_context_.get_slab_alloc_ctx();
+    int total_mem_units =
+            slab_list_allocator_->CountSlabsPerSuperblock() + num_buckets_;
     double load_factor =
             double(total_elems_stored * (sizeof(_Key) + sizeof(_Value))) /
             double(total_mem_units * WARP_WIDTH * sizeof(uint32_t));
-
-    allocator_->template deallocate<uint32_t>(d_count_super_blocks);
-    delete[] h_count_super_blocks;
 
     return load_factor;
 }
@@ -1073,17 +1048,3 @@ __global__ void CountElemsPerBucketKernel(
  * TODO: this should be moved into allocator's codebase (violation of
  * layers)
  */
-__global__ void compute_stats_allocators(uint32_t* d_count_super_block,
-                                         SlabAllocContext ctx) {
-    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-
-    int num_bitmaps = ctx.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 32;
-    if (tid >= num_bitmaps) {
-        return;
-    }
-
-    for (int i = 0; i < ctx.num_super_blocks_; i++) {
-        uint32_t read_bitmap = *(ctx.get_ptr_for_bitmap(i, tid));
-        atomicAdd(&d_count_super_block[i], __popc(read_bitmap));
-    }
-}
