@@ -9,7 +9,6 @@
 #include "unordered_map.h"
 #include "coordinate.h"
 
-
 void TEST_INSERT() {
 }
 

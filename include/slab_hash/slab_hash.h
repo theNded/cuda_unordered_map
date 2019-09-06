@@ -92,7 +92,7 @@ public:
     /* Debug usages */
     std::vector<int> CountElemsPerBucket();
 
-    double ComputeLoadFactor(int flag);
+    double ComputeLoadFactor();
 
 private:
     Slab* bucket_list_head_;
@@ -157,11 +157,6 @@ template <typename _Key, typename _Value, typename _Hash>
 __global__ void CountElemsPerBucketKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         uint32_t* bucket_elem_counts);
-
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void compute_stats_allocators(
-        uint32_t* d_count_super_block,
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx);
 
 /**
  * Implementation for the host class
@@ -292,7 +287,7 @@ std::vector<int> SlabHash<_Key, _Value, _Hash, _Alloc>::CountElemsPerBucket() {
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor(int flag = 1) {
+double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor() {
     auto elems_per_bucket = CountElemsPerBucket();
     int total_elems_stored = std::accumulate(elems_per_bucket.begin(),
                                              elems_per_bucket.end(), 0);
@@ -392,7 +387,8 @@ private:
 template <typename _Key, typename _Value, typename _Hash>
 SlabHashContext<_Key, _Value, _Hash>::SlabHashContext()
     : num_buckets_(0), bucket_list_head_(nullptr) {
-    static_assert(sizeof(Slab) == (WARP_WIDTH * sizeof(ptr_t)));
+    static_assert(sizeof(Slab) == (WARP_WIDTH * sizeof(ptr_t)),
+                  "Invalid slab size");
 }
 
 template <typename _Key, typename _Value, typename _Hash>
@@ -1048,10 +1044,3 @@ __global__ void CountElemsPerBucketKernel(
         bucket_elem_counts[wid] = count;
     }
 }
-
-/*
- * This kernel goes through all allocated bitmaps for a slab_hash_ctx's
- * allocator and store number of allocated slabs.
- * TODO: this should be moved into allocator's codebase (violation of
- * layers)
- */

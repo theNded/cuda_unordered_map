@@ -92,7 +92,7 @@ public:
             thrust::device_vector<Key>& input_keys);
 
     /* Assistance functions */
-    float ComputeLoadFactor(int flag = 1);
+    float ComputeLoadFactor();
     std::vector<int> CountElemsPerBucket();
 
 private:
@@ -316,7 +316,6 @@ std::vector<int> UnorderedMap<Key, Value, Hash, Alloc>::CountElemsPerBucket() {
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::ComputeLoadFactor(
-        int flag /* = 0 */) {
-    return slab_hash_->ComputeLoadFactor(flag);
+float UnorderedMap<Key, Value, Hash, Alloc>::ComputeLoadFactor() {
+    return slab_hash_->ComputeLoadFactor();
 }
