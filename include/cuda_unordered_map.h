@@ -300,14 +300,12 @@ unordered_map<Key, Value, Hash, Alloc>::_Search(
     assert(input_keys.size() < max_keys_);
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
-                          sizeof(Key) * input_keys.size(),
-                          cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
                           sizeof(uint8_t) * input_keys.size()));
 
-    slab_hash_->_Search(input_key_buffer_, output_iterator_buffer_,
-                        output_mask_buffer_, input_keys.size());
+    slab_hash_->_Search(thrust::raw_pointer_cast(input_keys.data()),
+                        output_iterator_buffer_, output_mask_buffer_,
+                        input_keys.size());
     CHECK_CUDA(cudaDeviceSynchronize());
 
     thrust::device_vector<_Iterator<Key, Value>> output_iterators(

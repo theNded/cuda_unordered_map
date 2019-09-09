@@ -32,11 +32,23 @@ public:
     ptr_t next_slab_ptr;
 };
 
-template <typename _Key, typename _Value, typename _Hash>
-class SlabHashContext;
+template <typename _Key, typename _Value>
+struct _Pair {
+    _Key first;
+    _Value second;
+    __device__ __host__ _Pair(const _Key& key, const _Value& value)
+        : first(key), second(value) {}
+    __device__ __host__ _Pair() : first(), second() {}
+};
 
 template <typename _Key, typename _Value>
-using _Pair = thrust::pair<_Key, _Value>;
+__device__ __host__ _Pair<_Key, _Value> _make_pair(const _Key& key,
+                                                   const _Value& value) {
+    return _Pair<_Key, _Value>(key, value);
+}
+
+template <typename _Key, typename _Value, typename _Hash>
+class SlabHashContext;
 
 template <typename _Key, typename _Value>
 using _Iterator = _Pair<_Key, _Value>*;
@@ -177,7 +189,7 @@ SlabHash<_Key, _Value, _Hash, _Alloc>::SlabHash(
     // allocate an initialize the allocator:
     allocator_ = std::make_shared<_Alloc>(device_idx);
     pair_allocator_ =
-            std::make_shared<MemoryAlloc<thrust::pair<_Key, _Value>, _Alloc>>(
+            std::make_shared<MemoryAlloc<_Pair<_Key, _Value>, _Alloc>>(
                     max_keyvalue_count);
     slab_list_allocator_ = std::make_shared<SlabAlloc<_Alloc>>();
 
@@ -311,24 +323,24 @@ template <typename _Key, typename _Value, typename _Hash>
 class SlabHashContext {
 public:
     SlabHashContext();
-    __host__ void Setup(Slab* bucket_list_head,
-                        const uint32_t num_buckets,
-                        const SlabAllocContext& allocator_ctx,
-                        const MemoryAllocContext<thrust::pair<_Key, _Value>>&
-                                pair_allocator_ctx);
+    __host__ void Setup(
+            Slab* bucket_list_head,
+            const uint32_t num_buckets,
+            const SlabAllocContext& allocator_ctx,
+            const MemoryAllocContext<_Pair<_Key, _Value>>& pair_allocator_ctx);
 
     /* Core SIMT operations, shared by both simplistic and verbose
      * interfaces */
-    __device__ thrust::pair<ptr_t, uint8_t> Insert(uint8_t& lane_active,
-                                                   const uint32_t lane_id,
-                                                   const uint32_t bucket_id,
-                                                   const _Key& key,
-                                                   const _Value& value);
+    __device__ _Pair<ptr_t, uint8_t> Insert(uint8_t& lane_active,
+                                            const uint32_t lane_id,
+                                            const uint32_t bucket_id,
+                                            const _Key& key,
+                                            const _Value& value);
 
-    __device__ thrust::pair<ptr_t, uint8_t> Search(uint8_t& lane_active,
-                                                   const uint32_t lane_id,
-                                                   const uint32_t bucket_id,
-                                                   const _Key& key);
+    __device__ _Pair<ptr_t, uint8_t> Search(uint8_t& lane_active,
+                                            const uint32_t lane_id,
+                                            const uint32_t bucket_id,
+                                            const _Key& key);
 
     __device__ uint8_t Remove(uint8_t& lane_active,
                               const uint32_t lane_id,
@@ -342,7 +354,7 @@ public:
     __device__ __host__ SlabAllocContext& get_slab_alloc_ctx() {
         return slab_list_allocator_ctx_;
     }
-    __device__ __host__ MemoryAllocContext<thrust::pair<_Key, _Value>>
+    __device__ __host__ MemoryAllocContext<_Pair<_Key, _Value>>
     get_pair_alloc_ctx() {
         return pair_allocator_ctx_;
     }
@@ -376,7 +388,7 @@ private:
 
     Slab* bucket_list_head_;
     SlabAllocContext slab_list_allocator_ctx_;
-    MemoryAllocContext<thrust::pair<_Key, _Value>> pair_allocator_ctx_;
+    MemoryAllocContext<_Pair<_Key, _Value>> pair_allocator_ctx_;
 };
 
 /**
@@ -394,8 +406,7 @@ __host__ void SlabHashContext<_Key, _Value, _Hash>::Setup(
         Slab* bucket_list_head,
         const uint32_t num_buckets,
         const SlabAllocContext& allocator_ctx,
-        const MemoryAllocContext<thrust::pair<_Key, _Value>>&
-                pair_allocator_ctx) {
+        const MemoryAllocContext<_Pair<_Key, _Value>>& pair_allocator_ctx) {
     bucket_list_head_ = bucket_list_head;
 
     num_buckets_ = num_buckets;
@@ -457,11 +468,11 @@ __device__ __forceinline__ void SlabHashContext<_Key, _Value, _Hash>::FreeSlab(
 }
 
 template <typename _Key, typename _Value, typename _Hash>
-__device__ thrust::pair<ptr_t, uint8_t>
-SlabHashContext<_Key, _Value, _Hash>::Search(uint8_t& to_search,
-                                             const uint32_t lane_id,
-                                             const uint32_t bucket_id,
-                                             const _Key& query_key) {
+__device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Search(
+        uint8_t& to_search,
+        const uint32_t lane_id,
+        const uint32_t bucket_id,
+        const _Key& query_key) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = work_queue;
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
@@ -526,7 +537,7 @@ SlabHashContext<_Key, _Value, _Hash>::Search(uint8_t& to_search,
         prev_work_queue = work_queue;
     }
 
-    return thrust::make_pair(iterator, mask);
+    return _make_pair(iterator, mask);
 }
 
 /*
@@ -535,12 +546,12 @@ SlabHashContext<_Key, _Value, _Hash>::Search(uint8_t& to_search,
  * WE DO NOT ALLOW DUPLICATE KEYS
  */
 template <typename _Key, typename _Value, typename _Hash>
-__device__ thrust::pair<ptr_t, uint8_t>
-SlabHashContext<_Key, _Value, _Hash>::Insert(uint8_t& to_be_inserted,
-                                             const uint32_t lane_id,
-                                             const uint32_t bucket_id,
-                                             const _Key& key,
-                                             const _Value& value) {
+__device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Insert(
+        uint8_t& to_be_inserted,
+        const uint32_t lane_id,
+        const uint32_t bucket_id,
+        const _Key& key,
+        const _Value& value) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = 0;
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
@@ -554,7 +565,7 @@ SlabHashContext<_Key, _Value, _Hash>::Insert(uint8_t& to_be_inserted,
     if (to_be_inserted) {
         prealloc_pair_internal_ptr = pair_allocator_ctx_.Allocate();
         pair_allocator_ctx_.extract(prealloc_pair_internal_ptr) =
-                thrust::make_pair(key, value);
+                _make_pair(key, value);
     }
 
     /** > Loop when we have active lanes **/
@@ -661,7 +672,7 @@ SlabHashContext<_Key, _Value, _Hash>::Insert(uint8_t& to_be_inserted,
         prev_work_queue = work_queue;
     }
 
-    return thrust::make_pair(iterator, mask);
+    return _make_pair(iterator, mask);
 }
 
 template <typename _Key, typename _Value, typename _Hash>
@@ -767,7 +778,7 @@ __global__ void SearchKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    thrust::pair<ptr_t, uint8_t> result =
+    _Pair<ptr_t, uint8_t> result =
             slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key);
 
     if (tid < num_queries) {
@@ -863,12 +874,12 @@ __global__ void _SearchKernel(
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    thrust::pair<ptr_t, uint8_t> result =
+    _Pair<ptr_t, uint8_t> result =
             slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key);
 
     if (tid < num_queries) {
-        iterators[tid] =
-                slab_hash_ctx.get_pair_alloc_ctx().extract_ptr(result.first);
+        iterators[tid] = slab_hash_ctx.get_pair_alloc_ctx().extract_ext_ptr(
+                result.first);
         masks[tid] = result.second;
     }
 }
@@ -902,12 +913,12 @@ __global__ void _InsertKernel(
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    thrust::pair<ptr_t, uint8_t> result =
+    _Pair<ptr_t, uint8_t> result =
             slab_hash_ctx.Insert(lane_active, lane_id, bucket_id, key, value);
 
     if (tid < num_keys) {
-        iterators[tid] =
-                slab_hash_ctx.get_pair_alloc_ctx().extract_ptr(result.first);
+        iterators[tid] = slab_hash_ctx.get_pair_alloc_ctx().extract_ext_ptr(
+                result.first);
         masks[tid] = result.second;
     }
 }
