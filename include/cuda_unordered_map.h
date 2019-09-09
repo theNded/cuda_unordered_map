@@ -60,13 +60,15 @@ public:
                  const uint32_t device_idx = 0);
     ~UnorderedMap();
 
-    /* READ ONLY output */
+    /* Minimal output */
+    /* No output for Insert */
     void Insert(const std::vector<Key>& input_keys,
                 const std::vector<Value>& input_values);
     void Insert(thrust::device_vector<Key>& input_keys,
                 thrust::device_vector<Value>& input_values);
     void Insert(Key* input_keys, Value* input_values, int num_keys);
 
+    /* Value and mask output for Search */
     std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
     Search(const std::vector<Key>& input_keys);
     std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
@@ -74,11 +76,12 @@ public:
     std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
     Search(Key* input_keys, int num_keys);
 
+    /* No output for Remove */
     void Remove(const std::vector<Key>& input_keys);
     void Remove(thrust::device_vector<Key>& input_keys);
     void Remove(Key* input_keys, int num_keys);
 
-    /* READ & WRITE output iterators */
+    /* Detailed output */
     std::pair<thrust::device_vector<_Iterator<Key, Value>>,
               thrust::device_vector<uint8_t>>
     _Insert(thrust::device_vector<Key>& input_keys,
@@ -205,12 +208,13 @@ UnorderedMap<Key, Value, Hash, Alloc>::Search(
     assert(input_keys.size() < max_keys_);
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
-                          sizeof(Key) * input_keys.size(),
-                          cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
                           sizeof(uint8_t) * input_keys.size()));
 
+    CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
+                          sizeof(Key) * input_keys.size(),
+
+                          cudaMemcpyHostToDevice));
     slab_hash_->Search(input_key_buffer_, output_value_buffer_,
                        output_mask_buffer_, input_keys.size());
     CHECK_CUDA(cudaDeviceSynchronize());
@@ -228,17 +232,18 @@ UnorderedMap<Key, Value, Hash, Alloc>::Search(
         thrust::device_vector<Key>& input_keys) {
     assert(input_keys.size() < max_keys_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
+    CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
+                          sizeof(uint8_t) * input_keys.size()));
+
+    slab_hash_->Search(thrust::raw_pointer_cast(input_keys.data()),
+                       output_value_buffer_, output_mask_buffer_,
+                       input_keys.size());
+    CHECK_CUDA(cudaDeviceSynchronize());
 
     thrust::device_vector<Value> output_values(
             output_value_buffer_, output_value_buffer_ + input_keys.size());
     thrust::device_vector<uint8_t> output_masks(
             output_mask_buffer_, output_mask_buffer_ + input_keys.size());
-    thrust::fill(output_masks.begin(), output_masks.end(), 0);
-
-    slab_hash_->Search(thrust::raw_pointer_cast(input_keys.data()),
-                       thrust::raw_pointer_cast(output_values.data()),
-                       thrust::raw_pointer_cast(output_masks.data()),
-                       input_keys.size());
     return std::make_pair(output_values, output_masks);
 }
 
@@ -248,8 +253,10 @@ UnorderedMap<Key, Value, Hash, Alloc>::Search(Key* input_keys, int num_keys) {
     assert(num_keys < max_keys_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0, sizeof(uint8_t) * num_keys));
+
     slab_hash_->Search(input_keys, output_value_buffer_, output_mask_buffer_,
                        num_keys);
+    CHECK_CUDA(cudaDeviceSynchronize());
 
     thrust::device_vector<Value> output_values(output_value_buffer_,
                                                output_value_buffer_ + num_keys);

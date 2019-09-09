@@ -24,7 +24,7 @@
 #include <random>
 #include <vector>
 #include "coordinate.h"
-#include "unordered_map.h"
+#include "cuda_unordered_map.h"
 
 constexpr size_t D = 7;
 using KeyT = Coordinate<int32_t, D>;

@@ -22,7 +22,7 @@
 #include <iostream>
 #include <random>
 #include <vector>
-#include "unordered_map.h"
+#include "cuda_unordered_map.h"
 #include "coordinate.h"
 
 using KeyT = uint32_t;

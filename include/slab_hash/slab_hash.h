@@ -319,18 +319,16 @@ public:
 
     /* Core SIMT operations, shared by both simplistic and verbose
      * interfaces */
-    __device__ thrust::pair<iterator_t, uint8_t> Insert(
-            uint8_t& lane_active,
-            const uint32_t lane_id,
-            const uint32_t bucket_id,
-            const _Key& key,
-            const _Value& value);
+    __device__ thrust::pair<ptr_t, uint8_t> Insert(uint8_t& lane_active,
+                                                   const uint32_t lane_id,
+                                                   const uint32_t bucket_id,
+                                                   const _Key& key,
+                                                   const _Value& value);
 
-    __device__ thrust::pair<iterator_t, uint8_t> Search(
-            uint8_t& lane_active,
-            const uint32_t lane_id,
-            const uint32_t bucket_id,
-            const _Key& key);
+    __device__ thrust::pair<ptr_t, uint8_t> Search(uint8_t& lane_active,
+                                                   const uint32_t lane_id,
+                                                   const uint32_t bucket_id,
+                                                   const _Key& key);
 
     __device__ uint8_t Remove(uint8_t& lane_active,
                               const uint32_t lane_id,
@@ -459,7 +457,7 @@ __device__ __forceinline__ void SlabHashContext<_Key, _Value, _Hash>::FreeSlab(
 }
 
 template <typename _Key, typename _Value, typename _Hash>
-__device__ thrust::pair<iterator_t, uint8_t>
+__device__ thrust::pair<ptr_t, uint8_t>
 SlabHashContext<_Key, _Value, _Hash>::Search(uint8_t& to_search,
                                              const uint32_t lane_id,
                                              const uint32_t bucket_id,
@@ -468,7 +466,7 @@ SlabHashContext<_Key, _Value, _Hash>::Search(uint8_t& to_search,
     uint32_t prev_work_queue = work_queue;
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
 
-    iterator_t iterator = NULL_ITERATOR;
+    ptr_t iterator = NULL_ITERATOR;
     uint8_t mask = false;
 
     /** > Loop when we have active lanes **/
@@ -537,7 +535,7 @@ SlabHashContext<_Key, _Value, _Hash>::Search(uint8_t& to_search,
  * WE DO NOT ALLOW DUPLICATE KEYS
  */
 template <typename _Key, typename _Value, typename _Hash>
-__device__ thrust::pair<iterator_t, uint8_t>
+__device__ thrust::pair<ptr_t, uint8_t>
 SlabHashContext<_Key, _Value, _Hash>::Insert(uint8_t& to_be_inserted,
                                              const uint32_t lane_id,
                                              const uint32_t bucket_id,
@@ -547,7 +545,7 @@ SlabHashContext<_Key, _Value, _Hash>::Insert(uint8_t& to_be_inserted,
     uint32_t prev_work_queue = 0;
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
 
-    iterator_t iterator = NULL_ITERATOR;
+    ptr_t iterator = NULL_ITERATOR;
     uint8_t mask = false;
 
     /** WARNING: Allocation should be finished in warp,
@@ -769,7 +767,7 @@ __global__ void SearchKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    thrust::pair<iterator_t, uint8_t> result =
+    thrust::pair<ptr_t, uint8_t> result =
             slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key);
 
     if (tid < num_queries) {
@@ -865,7 +863,7 @@ __global__ void _SearchKernel(
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    thrust::pair<iterator_t, uint8_t> result =
+    thrust::pair<ptr_t, uint8_t> result =
             slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key);
 
     if (tid < num_queries) {
@@ -904,7 +902,7 @@ __global__ void _InsertKernel(
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    thrust::pair<iterator_t, uint8_t> result =
+    thrust::pair<ptr_t, uint8_t> result =
             slab_hash_ctx.Insert(lane_active, lane_id, bucket_id, key, value);
 
     if (tid < num_keys) {
@@ -950,7 +948,7 @@ __global__ void _RemoveKernel(
 template <typename _Key, typename _Value, typename _Hash>
 __global__ void GetIteratorsKernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        iterator_t* iterators,
+        ptr_t* iterators,
         uint32_t* iterator_count,
         uint32_t num_buckets) {
     // global warp ID

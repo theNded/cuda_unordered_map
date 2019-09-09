@@ -41,5 +41,4 @@ using addr_t = uint32_t;
 /* These types are all the same, but distiguish the naming can lead to clearer
  * meanings*/
 using ptr_t = uint32_t;
-using iterator_t = uint32_t;
 static constexpr uint32_t NULL_ITERATOR = 0xFFFFFFFF;
