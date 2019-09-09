@@ -20,7 +20,7 @@ void TEST_MINIMAL_THRUST_INSERT() {
       unordered_map[insert_keys[i]] = insert_vals[i];
     }
 
-    UnorderedMap<int, int> cuda_unordered_map(10);
+    cuda::unordered_map<int, int> cuda_unordered_map(10);
     thrust::device_vector<int> cuda_insert_keys = insert_keys;
     thrust::device_vector<int> cuda_insert_vals = insert_vals;
     cuda_unordered_map.Insert(cuda_insert_keys, cuda_insert_vals);

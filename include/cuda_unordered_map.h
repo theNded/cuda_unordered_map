@@ -46,19 +46,20 @@ struct hash {
  * We have to use uint8_t instead to read and write masks
  * https://en.wikipedia.org/w/index.php?title=Sequence_container_(C%2B%2B)&oldid=767869909#Specialization_for_bool
  */
+namespace cuda {
 template <typename Key,
           typename Value,
           typename Hash = hash<Key>,
           class Alloc = CudaAllocator>
-class UnorderedMap {
+class unordered_map {
 public:
-    UnorderedMap(uint32_t max_keys,
-                 /* Preset hash table params to estimate bucket num */
-                 uint32_t keys_per_bucket = 10,
-                 float expected_occupancy_per_bucket = 0.5,
-                 /* CUDA device */
-                 const uint32_t device_idx = 0);
-    ~UnorderedMap();
+    unordered_map(uint32_t max_keys,
+                  /* Preset hash table params to estimate bucket num */
+                  uint32_t keys_per_bucket = 10,
+                  float expected_occupancy_per_bucket = 0.5,
+                  /* CUDA device */
+                  const uint32_t device_idx = 0);
+    ~unordered_map();
 
     /* Minimal output */
     /* No output for Insert */
@@ -116,7 +117,7 @@ private:
 };
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-UnorderedMap<Key, Value, Hash, Alloc>::UnorderedMap(
+unordered_map<Key, Value, Hash, Alloc>::unordered_map(
         uint32_t max_keys,
         uint32_t keys_per_bucket,
         float expected_occupancy_per_bucket,
@@ -150,7 +151,7 @@ UnorderedMap<Key, Value, Hash, Alloc>::UnorderedMap(
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-UnorderedMap<Key, Value, Hash, Alloc>::~UnorderedMap() {
+unordered_map<Key, Value, Hash, Alloc>::~unordered_map() {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
 
     allocator_->template deallocate<Key>(input_key_buffer_);
@@ -164,7 +165,7 @@ UnorderedMap<Key, Value, Hash, Alloc>::~UnorderedMap() {
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-void UnorderedMap<Key, Value, Hash, Alloc>::Insert(
+void unordered_map<Key, Value, Hash, Alloc>::Insert(
         const std::vector<Key>& input_keys,
         const std::vector<Value>& input_values) {
     assert(input_values.size() == input_keys.size());
@@ -182,7 +183,7 @@ void UnorderedMap<Key, Value, Hash, Alloc>::Insert(
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-void UnorderedMap<Key, Value, Hash, Alloc>::Insert(
+void unordered_map<Key, Value, Hash, Alloc>::Insert(
         thrust::device_vector<Key>& input_keys,
         thrust::device_vector<Value>& input_values) {
     assert(input_values.size() == input_keys.size());
@@ -194,16 +195,16 @@ void UnorderedMap<Key, Value, Hash, Alloc>::Insert(
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-void UnorderedMap<Key, Value, Hash, Alloc>::Insert(Key* input_keys,
-                                                   Value* input_values,
-                                                   int num_keys) {
+void unordered_map<Key, Value, Hash, Alloc>::Insert(Key* input_keys,
+                                                    Value* input_values,
+                                                    int num_keys) {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     slab_hash_->Insert(input_keys, input_values, num_keys);
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
-UnorderedMap<Key, Value, Hash, Alloc>::Search(
+unordered_map<Key, Value, Hash, Alloc>::Search(
         const std::vector<Key>& input_keys) {
     assert(input_keys.size() < max_keys_);
 
@@ -228,7 +229,7 @@ UnorderedMap<Key, Value, Hash, Alloc>::Search(
 
 template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
-UnorderedMap<Key, Value, Hash, Alloc>::Search(
+unordered_map<Key, Value, Hash, Alloc>::Search(
         thrust::device_vector<Key>& input_keys) {
     assert(input_keys.size() < max_keys_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
@@ -249,7 +250,7 @@ UnorderedMap<Key, Value, Hash, Alloc>::Search(
 
 template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
-UnorderedMap<Key, Value, Hash, Alloc>::Search(Key* input_keys, int num_keys) {
+unordered_map<Key, Value, Hash, Alloc>::Search(Key* input_keys, int num_keys) {
     assert(num_keys < max_keys_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0, sizeof(uint8_t) * num_keys));
@@ -266,7 +267,7 @@ UnorderedMap<Key, Value, Hash, Alloc>::Search(Key* input_keys, int num_keys) {
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-void UnorderedMap<Key, Value, Hash, Alloc>::Remove(
+void unordered_map<Key, Value, Hash, Alloc>::Remove(
         const std::vector<Key>& input_keys) {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
@@ -276,7 +277,7 @@ void UnorderedMap<Key, Value, Hash, Alloc>::Remove(
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-void UnorderedMap<Key, Value, Hash, Alloc>::Remove(
+void unordered_map<Key, Value, Hash, Alloc>::Remove(
         thrust::device_vector<Key>& input_keys) {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
 
@@ -285,8 +286,8 @@ void UnorderedMap<Key, Value, Hash, Alloc>::Remove(
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-void UnorderedMap<Key, Value, Hash, Alloc>::Remove(Key* input_keys,
-                                                   int num_keys) {
+void unordered_map<Key, Value, Hash, Alloc>::Remove(Key* input_keys,
+                                                    int num_keys) {
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     slab_hash_->Remove(input_keys, num_keys);
 }
@@ -294,7 +295,7 @@ void UnorderedMap<Key, Value, Hash, Alloc>::Remove(Key* input_keys,
 template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<_Iterator<Key, Value>>,
           thrust::device_vector<uint8_t>>
-UnorderedMap<Key, Value, Hash, Alloc>::_Search(
+unordered_map<Key, Value, Hash, Alloc>::_Search(
         thrust::device_vector<Key>& input_keys) {
     assert(input_keys.size() < max_keys_);
 
@@ -318,11 +319,12 @@ UnorderedMap<Key, Value, Hash, Alloc>::_Search(
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-std::vector<int> UnorderedMap<Key, Value, Hash, Alloc>::CountElemsPerBucket() {
+std::vector<int> unordered_map<Key, Value, Hash, Alloc>::CountElemsPerBucket() {
     return slab_hash_->CountElemsPerBucket();
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
-float UnorderedMap<Key, Value, Hash, Alloc>::ComputeLoadFactor() {
+float unordered_map<Key, Value, Hash, Alloc>::ComputeLoadFactor() {
     return slab_hash_->ComputeLoadFactor();
 }
+}  // namespace cuda

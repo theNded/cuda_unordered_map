@@ -241,7 +241,7 @@ int TestInsert(TestDataHelperGPU &data_generator) {
     CudaTimer timer;
     float time;
 
-    UnorderedMap<KeyT, ValueT> hash_table(
+    cuda::unordered_map<KeyT, ValueT> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -283,7 +283,7 @@ int TestInsert(TestDataHelperGPU &data_generator) {
 int TestRemove(TestDataHelperGPU &data_generator) {
     CudaTimer timer;
     float time;
-    UnorderedMap<KeyT, ValueT, HashFunc> hash_table(
+    cuda::unordered_map<KeyT, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -353,7 +353,7 @@ int TestConflict(TestDataHelperGPU &data_generator) {
     CudaTimer timer;
     float time;
 
-    UnorderedMap<KeyT, ValueT, HashFunc> hash_table(
+    cuda::unordered_map<KeyT, ValueT, HashFunc> hash_table(
             data_generator.keys_pool_size_);
 
     auto insert_query_data_tuple = data_generator.GenerateData(
@@ -422,7 +422,7 @@ int TestConflict(TestDataHelperGPU &data_generator) {
 int main() {
     const int key_value_pool_size = 1 << 20;
     const float existing_ratio = 0.6f;
-    UnorderedMap<KeyT, ValueT, HashFunc> hash_table(
+    cuda::unordered_map<KeyT, ValueT, HashFunc> hash_table(
             key_value_pool_size);
 
     auto data_generator =
