@@ -85,14 +85,14 @@ public:
     /* Detailed output */
     std::pair<thrust::device_vector<_Iterator<Key, Value>>,
               thrust::device_vector<uint8_t>>
-    _Insert(thrust::device_vector<Key>& input_keys,
+    Insert_(thrust::device_vector<Key>& input_keys,
             thrust::device_vector<Value>& input_values);
 
     std::pair<thrust::device_vector<_Iterator<Key, Value>>,
               thrust::device_vector<uint8_t>>
-    _Search(thrust::device_vector<Key>& input_keys);
+    Search_(thrust::device_vector<Key>& input_keys);
 
-    thrust::device_vector<uint8_t> _Remove(
+    thrust::device_vector<uint8_t> Remove_(
             thrust::device_vector<Key>& input_keys);
 
     /* Assistance functions */
@@ -295,7 +295,7 @@ void unordered_map<Key, Value, Hash, Alloc>::Remove(Key* input_keys,
 template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<_Iterator<Key, Value>>,
           thrust::device_vector<uint8_t>>
-unordered_map<Key, Value, Hash, Alloc>::_Search(
+unordered_map<Key, Value, Hash, Alloc>::Search_(
         thrust::device_vector<Key>& input_keys) {
     assert(input_keys.size() < max_keys_);
 
@@ -303,7 +303,7 @@ unordered_map<Key, Value, Hash, Alloc>::_Search(
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
                           sizeof(uint8_t) * input_keys.size()));
 
-    slab_hash_->_Search(thrust::raw_pointer_cast(input_keys.data()),
+    slab_hash_->Search_(thrust::raw_pointer_cast(input_keys.data()),
                         output_iterator_buffer_, output_mask_buffer_,
                         input_keys.size());
     CHECK_CUDA(cudaDeviceSynchronize());

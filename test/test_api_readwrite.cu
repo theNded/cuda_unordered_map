@@ -27,7 +27,7 @@ void TEST_MINIMAL_THRUST_INSERT() {
 
     /** Query **/
     thrust::device_vector<int> cuda_query_keys(std::vector<int>({1, 2, 3, 4, 5}));
-    auto cuda_query_results = cuda_unordered_map._Search(cuda_query_keys);
+    auto cuda_query_results = cuda_unordered_map.Search_(cuda_query_keys);
 
     for (int i = 0; i < cuda_query_keys.size(); ++i) {
       auto iter = unordered_map.find(cuda_query_keys[i]);

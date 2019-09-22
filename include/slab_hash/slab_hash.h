@@ -81,16 +81,16 @@ public:
      * Output iterators supports READ/WRITE: change to these output will
      * DIRECTLY change the internal hash table.
      */
-    void _Insert(_Key* input_keys,
+    void Insert_(_Key* input_keys,
                  _Value* input_values,
                  _Iterator<_Key, _Value>* output_iterators,
                  uint8_t* output_masks,
                  uint32_t num_keys);
-    void _Search(_Key* input_keys,
+    void Search_(_Key* input_keys,
                  _Iterator<_Key, _Value>* output_iterators,
                  uint8_t* output_masks,
                  uint32_t num_keys);
-    void _Remove(_Key* input_keys, uint8_t* output_masks, uint32_t num_keys);
+    void Remove_(_Key* input_keys, uint8_t* output_masks, uint32_t num_keys);
 
     /* Parallel collect all the iterators from begin to end */
     void GetIterators(_Iterator<_Key, _Value>* iterators,
@@ -138,7 +138,7 @@ __global__ void RemoveKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
 
 /** Verbose version **/
 template <typename _Key, typename _Value, typename _Hash>
-__global__ void _InsertKernel(
+__global__ void Insert_Kernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* input_keys,
         _Value* input_values,
@@ -146,14 +146,14 @@ __global__ void _InsertKernel(
         uint8_t* output_masks,
         uint32_t num_keys);
 template <typename _Key, typename _Value, typename _Hash>
-__global__ void _SearchKernel(
+__global__ void Search_Kernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* input_keys,
         _Iterator<_Key, _Value>* output_iterators,
         uint8_t* output_masks,
         uint32_t num_keys);
 template <typename _Key, typename _Value, typename _Hash>
-__global__ void _RemoveKernel(
+__global__ void Remove_Kernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* input_keys,
         uint8_t* output_masks,
@@ -241,7 +241,7 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Remove(_Key* keys,
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-void SlabHash<_Key, _Value, _Hash, _Alloc>::_Insert(
+void SlabHash<_Key, _Value, _Hash, _Alloc>::Insert_(
         _Key* keys,
         _Value* values,
         _Iterator<_Key, _Value>* iterators,
@@ -255,24 +255,24 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::_Insert(
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-void SlabHash<_Key, _Value, _Hash, _Alloc>::_Search(
+void SlabHash<_Key, _Value, _Hash, _Alloc>::Search_(
         _Key* keys,
         _Iterator<_Key, _Value>* iterators,
         uint8_t* masks,
         uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    _SearchKernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>(
+    Search_Kernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>(
             gpu_context_, keys, iterators, masks, num_keys);
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-void SlabHash<_Key, _Value, _Hash, _Alloc>::_Remove(_Key* keys,
+void SlabHash<_Key, _Value, _Hash, _Alloc>::Remove_(_Key* keys,
                                                     uint8_t* masks,
                                                     uint32_t num_keys) {
     CHECK_CUDA(cudaSetDevice(device_idx_));
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    _RemoveKernel<_Key, _Value, _Hash>
+    Remove_Kernel<_Key, _Value, _Hash>
             <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, masks, num_keys);
 }
 
@@ -847,7 +847,7 @@ __global__ void RemoveKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
 }
 
 template <typename _Key, typename _Value, typename _Hash>
-__global__ void _SearchKernel(
+__global__ void Search_Kernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* keys,
         _Iterator<_Key, _Value>* iterators,
@@ -885,7 +885,7 @@ __global__ void _SearchKernel(
 }
 
 template <typename _Key, typename _Value, typename _Hash>
-__global__ void _InsertKernel(
+__global__ void Insert_Kernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* keys,
         _Value* values,
@@ -924,7 +924,7 @@ __global__ void _InsertKernel(
 }
 
 template <typename _Key, typename _Value, typename _Hash>
-__global__ void _RemoveKernel(
+__global__ void Remove_Kernel(
         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
         _Key* keys,
         uint8_t* masks,
