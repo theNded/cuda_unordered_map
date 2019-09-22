@@ -3,6 +3,7 @@
 //
 
 #include <cstdint>
+#include <random>
 
 template <typename T, size_t D>
 struct Coordinate {
@@ -17,9 +18,19 @@ public:
         bool equal = true;
 #pragma unroll 1
         for (size_t i = 0; i < D; ++i) {
-            equal &= (data_[i] == rhs[i]);
+            equal = equal && (data_[i] == rhs[i]);
         }
         return equal;
+    }
+
+    static __host__ Coordinate<T, D> random(
+            std::default_random_engine generator,
+            std::uniform_int_distribution<int> dist) {
+        Coordinate<T, D> res;
+        for (size_t i = 0; i < D; ++i) {
+            res.data_[i] = dist(generator);
+        }
+        return res;
     }
 };
 
@@ -30,7 +41,7 @@ struct CoordinateHashFunc {
 
         /** We only support 4-byte and 8-byte types **/
         using input_t = typename std::conditional<sizeof(T) == sizeof(uint32_t),
-                uint32_t, uint64_t>::type;
+                                                  uint32_t, uint64_t>::type;
 #pragma unroll 1
         for (size_t i = 0; i < D; ++i) {
             hash ^= *((input_t*)(&key[i]));
