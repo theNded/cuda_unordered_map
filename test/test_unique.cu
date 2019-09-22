@@ -10,6 +10,8 @@
 #include "cuda_unordered_map.h"
 #include "coordinate.h"
 
+#include "custom_class.h"
+
 void TEST_SIMPLE() {
     std::unordered_map<int, int> unordered_map;
 
@@ -27,53 +29,27 @@ void TEST_SIMPLE() {
 
     // query
     thrust::device_vector<int> cuda_query_keys(std::vector<int>({1, 2, 3, 4, 5}));
-    auto cuda_query_results = cuda_unordered_map.Search(cuda_query_keys);
+    auto cuda_query_results_ro = cuda_unordered_map.Search(cuda_query_keys);
+    auto cuda_query_results_rw = cuda_unordered_map.Search_(cuda_query_keys);
 
     for (int i = 0; i < cuda_query_keys.size(); ++i) {
       auto iter = unordered_map.find(cuda_query_keys[i]);
       if (iter == unordered_map.end()) {
-        assert(cuda_query_results.second[i] == 0);
+        assert(cuda_query_results_ro.second[i] == 0);
+        assert(cuda_query_results_rw.second[i] == 0);
       } else {
-        assert(cuda_query_results.first[i] == iter->second);
+        assert(cuda_query_results_ro.first[i] == iter->second);
+
+        _Iterator<int, int> iterator = cuda_query_results_rw.first[i];
+        // _Iterator == _Pair*
+        _Pair<int, int> kv = *(thrust::device_ptr<_Pair<int, int>>(iterator));
+        assert(kv.first == cuda_query_keys[i]);
+        assert(kv.second == iter->second);
+
       }
     }
 
     std::cout << "TEST_SIMPLE() passed\n";
-}
-
-struct Vector6i {
-  int x[6];
-
-  __device__  __host__ Vector6i() {};
-  __host__ Vector6i Random_(std::default_random_engine& generator,
-                        std::uniform_int_distribution<int> &dist) {
-    for (int i = 0; i < 6; ++i) {
-      x[i] = dist(generator);
-    }
-    return *this;
-  }
-
-  __device__ __host__ bool operator ==(const Vector6i &other) const {
-    bool res = true;
-    for (int i = 0; i < 6; ++i) {
-      res = res && (other.x[i] == x[i]);
-    }
-    return res;
-  }
-};
-
-namespace std {
-  template <>
-  struct hash<Vector6i> {
-  std::size_t operator()(const Vector6i& k) const {
-    uint64_t h = UINT64_C(14695981039346656037);
-    for (size_t i = 0; i < 6; ++i) {
-        h ^= k.x[i];
-        h *= UINT64_C(1099511628211);
-    }
-    return h;
-  }
-};
 }
 
 void TEST_6DIM_KEYS_THRUST(int key_size) {
@@ -225,9 +201,8 @@ void TEST_COORDS(int key_size) {
     std::cout << "conversion finished\n";
 
     // cpu groundtruth
-    std::cout << "generating std::unordered_map ground truth...\n";
-    std::unordered_map<Coordinate<int, D>, int, CoordinateHashFunc<int, D>>
-      unordered_map;
+    std::cout << "generating std::unordered_map ground truth hashtable...\n";
+    std::unordered_map<Coordinate<int, D>, int, CoordinateHashFunc<int, D>> unordered_map;
     for (int i = 0; i < key_size; ++i) {
       unordered_map[insert_keys[i]] = insert_vals[i];
     }
@@ -241,13 +216,13 @@ void TEST_COORDS(int key_size) {
     cuda_unordered_map.Insert(cuda_insert_keys, cuda_insert_vals);
     std::cout << "insertion finished\n";
 
-    // query -- all true
+    // query
     std::cout << "generating query_data...\n";
     std::vector<Coordinate<int, D>> cuda_query_keys(insert_keys.size());
     for (int i = 0; i < key_size; ++i) {
-      if (i % 3 == 2) {
+      if (i % 3 != 2) { // 2/3 is valid
         cuda_query_keys[i] = cuda_insert_keys[i];
-      } else {
+      } else { // 1/3 is invalid
         cuda_query_keys[i] = Coordinate<int, D>::random(generator, dist);
       }
     }
