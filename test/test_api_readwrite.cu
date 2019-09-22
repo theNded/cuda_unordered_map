@@ -10,10 +10,10 @@
 #include "cuda_unordered_map.h"
 #include "coordinate.h"
 
-void TEST_MINIMAL_THRUST_INSERT() {
+void TEST_SIMPLE() {
     std::unordered_map<int, int> unordered_map;
 
-    /** Insertion **/
+    // insert
     std::vector<int> insert_keys = {1, 3, 5};
     std::vector<int> insert_vals = {100, 300, 500};
     for (int i = 0; i < insert_keys.size(); ++i) {
@@ -25,7 +25,7 @@ void TEST_MINIMAL_THRUST_INSERT() {
     thrust::device_vector<int> cuda_insert_vals = insert_vals;
     cuda_unordered_map.Insert(cuda_insert_keys, cuda_insert_vals);
 
-    /** Query **/
+    // query
     thrust::device_vector<int> cuda_query_keys(std::vector<int>({1, 2, 3, 4, 5}));
     auto cuda_query_results = cuda_unordered_map.Search_(cuda_query_keys);
 
@@ -42,9 +42,9 @@ void TEST_MINIMAL_THRUST_INSERT() {
       }
     }
 
-    std::cout << "TEST_MINIMAL_THRUST_INSERT() passed\n";
+    std::cout << "TEST_SIMPLE() passed\n";
 }
 
 int main() {
-  TEST_MINIMAL_THRUST_INSERT();
+  TEST_SIMPLE();
 }

@@ -169,6 +169,7 @@ void unordered_map<Key, Value, Hash, Alloc>::Insert(
         const std::vector<Key>& input_keys,
         const std::vector<Value>& input_values) {
     assert(input_values.size() == input_keys.size());
+    assert(input_keys.size() <= max_keys_);
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
@@ -187,6 +188,7 @@ void unordered_map<Key, Value, Hash, Alloc>::Insert(
         thrust::device_vector<Key>& input_keys,
         thrust::device_vector<Value>& input_values) {
     assert(input_values.size() == input_keys.size());
+    assert(input_keys.size() <= max_keys_);
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     slab_hash_->Insert(thrust::raw_pointer_cast(input_keys.data()),
@@ -206,7 +208,7 @@ template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
 unordered_map<Key, Value, Hash, Alloc>::Search(
         const std::vector<Key>& input_keys) {
-    assert(input_keys.size() < max_keys_);
+    assert(input_keys.size() <= max_keys_);
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
@@ -231,7 +233,7 @@ template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
 unordered_map<Key, Value, Hash, Alloc>::Search(
         thrust::device_vector<Key>& input_keys) {
-    assert(input_keys.size() < max_keys_);
+    assert(input_keys.size() <= max_keys_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
                           sizeof(uint8_t) * input_keys.size()));
@@ -251,7 +253,7 @@ unordered_map<Key, Value, Hash, Alloc>::Search(
 template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
 unordered_map<Key, Value, Hash, Alloc>::Search(Key* input_keys, int num_keys) {
-    assert(num_keys < max_keys_);
+    assert(num_keys <= max_keys_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0, sizeof(uint8_t) * num_keys));
 
@@ -297,7 +299,7 @@ std::pair<thrust::device_vector<_Iterator<Key, Value>>,
           thrust::device_vector<uint8_t>>
 unordered_map<Key, Value, Hash, Alloc>::Search_(
         thrust::device_vector<Key>& input_keys) {
-    assert(input_keys.size() < max_keys_);
+    assert(input_keys.size() <= max_keys_);
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,

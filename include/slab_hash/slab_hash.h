@@ -218,6 +218,8 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Insert(_Key* keys,
     CHECK_CUDA(cudaSetDevice(device_idx_));
     InsertKernel<_Key, _Value, _Hash>
             <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, values, num_keys);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaGetLastError());
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
@@ -229,6 +231,8 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Search(_Key* keys,
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     SearchKernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>(
             gpu_context_, keys, values, founds, num_keys);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaGetLastError());
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
@@ -238,6 +242,8 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Remove(_Key* keys,
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     RemoveKernel<_Key, _Value, _Hash>
             <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, num_keys);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaGetLastError());
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
@@ -252,6 +258,8 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Insert_(
     CHECK_CUDA(cudaSetDevice(device_idx_));
     InsertKernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>(
             gpu_context_, keys, values, iterators, masks, num_keys);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaGetLastError());
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
@@ -264,6 +272,8 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Search_(
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     Search_Kernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>(
             gpu_context_, keys, iterators, masks, num_keys);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaGetLastError());
 }
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
@@ -274,6 +284,8 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Remove_(_Key* keys,
     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
     Remove_Kernel<_Key, _Value, _Hash>
             <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, masks, num_keys);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaGetLastError());
 }
 
 /* Debug usage */
