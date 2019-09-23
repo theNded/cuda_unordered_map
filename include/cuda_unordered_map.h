@@ -46,12 +46,11 @@ struct hash {
  * We have to use uint8_t instead to read and write masks
  * https://en.wikipedia.org/w/index.php?title=Sequence_container_(C%2B%2B)&oldid=767869909#Specialization_for_bool
  */
-namespace cuda {
 template <typename Key,
           typename Value,
           typename Hash = hash<Key>,
           class Alloc = CudaAllocator>
-class unordered_map {
+class unordered_map : public unordered_map_base {
 public:
     unordered_map(uint32_t max_keys,
                   /* Preset hash table params to estimate bucket num */
@@ -122,7 +121,10 @@ unordered_map<Key, Value, Hash, Alloc>::unordered_map(
         uint32_t keys_per_bucket,
         float expected_occupancy_per_bucket,
         const uint32_t device_idx)
-    : max_keys_(max_keys), cuda_device_idx_(device_idx), slab_hash_(nullptr) {
+    : unordered_map_base(),
+      max_keys_(max_keys),
+      cuda_device_idx_(device_idx),
+      slab_hash_(nullptr) {
     /* Set bucket size */
     uint32_t expected_keys_per_bucket =
             expected_occupancy_per_bucket * keys_per_bucket;
