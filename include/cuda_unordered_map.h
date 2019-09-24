@@ -103,6 +103,7 @@ public:
 private:
     uint32_t max_keys_;
     uint32_t num_buckets_;
+    uint32_t key_channels_;
     uint32_t cuda_device_idx_;
 
     /* Buffer for input cpu data (e.g. from std::vector) */
@@ -130,6 +131,7 @@ unordered_map<Key, Value, Hash, Alloc>::unordered_map(
             expected_occupancy_per_bucket * keys_per_bucket;
     num_buckets_ = (max_keys + expected_keys_per_bucket - 1) /
                    expected_keys_per_bucket;
+    key_channels_ = key_channels;
 
     /* Set device */
     int32_t cuda_device_count_ = 0;
@@ -139,9 +141,11 @@ unordered_map<Key, Value, Hash, Alloc>::unordered_map(
     allocator_ = std::make_shared<Alloc>(cuda_device_idx_);
 
     // allocating key, value arrays to buffer input and output:
-    input_key_buffer_ = allocator_->template allocate<Key>(max_keys_);
+    input_key_buffer_ = allocator_->template allocate<Key>(
+            max_keys_, sizeof(Key) * key_channels);
     input_value_buffer_ = allocator_->template allocate<Value>(max_keys_);
-    output_key_buffer_ = allocator_->template allocate<Key>(max_keys_);
+    output_key_buffer_ = allocator_->template allocate<Key>(
+            max_keys_, sizeof(Key) * key_channels);
     output_value_buffer_ = allocator_->template allocate<Value>(max_keys_);
     output_mask_buffer_ = allocator_->template allocate<uint8_t>(max_keys_);
     /* output_iterator_buffer_ = */
@@ -171,32 +175,31 @@ template <typename Key, typename Value, typename Hash, class Alloc>
 void unordered_map<Key, Value, Hash, Alloc>::Insert(
         const std::vector<Key>& input_keys,
         const std::vector<Value>& input_values) {
-    assert(input_values.size() == input_keys.size());
-    assert(input_keys.size() <= max_keys_);
+    int num_keys = input_keys.size() / key_channels_;
+    assert(input_values.size() == num_keys);
+    assert(num_keys <= max_keys_);
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
-                          sizeof(Key) * input_keys.size(),
+                          sizeof(Key) * key_channels_ * num_keys,
                           cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(input_value_buffer_, input_values.data(),
-                          sizeof(Value) * input_values.size(),
-                          cudaMemcpyHostToDevice));
+                          sizeof(Value) * num_keys, cudaMemcpyHostToDevice));
 
-    slab_hash_->Insert(input_key_buffer_, input_value_buffer_,
-                       input_keys.size());
+    slab_hash_->Insert(input_key_buffer_, input_value_buffer_, num_keys);
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
 void unordered_map<Key, Value, Hash, Alloc>::Insert(
         thrust::device_vector<Key>& input_keys,
         thrust::device_vector<Value>& input_values) {
-    assert(input_values.size() == input_keys.size());
-    assert(input_keys.size() <= max_keys_);
+    int num_keys = input_keys.size() / key_channels_;
+    assert(input_values.size() == num_keys);
+    assert(num_keys <= max_keys_);
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
     slab_hash_->Insert(thrust::raw_pointer_cast(input_keys.data()),
-                       thrust::raw_pointer_cast(input_values.data()),
-                       input_keys.size());
+                       thrust::raw_pointer_cast(input_values.data()), num_keys);
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
@@ -211,24 +214,23 @@ template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
 unordered_map<Key, Value, Hash, Alloc>::Search(
         const std::vector<Key>& input_keys) {
-    assert(input_keys.size() <= max_keys_);
+    int num_keys = input_keys.size() / key_channels_;
+    assert(num_keys <= max_keys_);
 
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
-                          sizeof(uint8_t) * input_keys.size()));
+    CHECK_CUDA(cudaMemset(output_mask_buffer_, 0, sizeof(uint8_t) * num_keys));
 
     CHECK_CUDA(cudaMemcpy(input_key_buffer_, input_keys.data(),
-                          sizeof(Key) * input_keys.size(),
-
+                          sizeof(Key) * num_keys * key_channels_,
                           cudaMemcpyHostToDevice));
     slab_hash_->Search(input_key_buffer_, output_value_buffer_,
-                       output_mask_buffer_, input_keys.size());
+                       output_mask_buffer_, num_keys);
     CHECK_CUDA(cudaDeviceSynchronize());
 
-    thrust::device_vector<Value> output_values(
-            output_value_buffer_, output_value_buffer_ + input_keys.size());
-    thrust::device_vector<uint8_t> output_masks(
-            output_mask_buffer_, output_mask_buffer_ + input_keys.size());
+    thrust::device_vector<Value> output_values(output_value_buffer_,
+                                               output_value_buffer_ + num_keys);
+    thrust::device_vector<uint8_t> output_masks(output_mask_buffer_,
+                                                output_mask_buffer_ + num_keys);
     return std::make_pair(output_values, output_masks);
 }
 
@@ -236,20 +238,19 @@ template <typename Key, typename Value, typename Hash, class Alloc>
 std::pair<thrust::device_vector<Value>, thrust::device_vector<uint8_t>>
 unordered_map<Key, Value, Hash, Alloc>::Search(
         thrust::device_vector<Key>& input_keys) {
-    assert(input_keys.size() <= max_keys_);
+    int num_keys = input_keys.size() / key_channels_;
+    assert(num_keys <= max_keys_);
     CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
-                          sizeof(uint8_t) * input_keys.size()));
+    CHECK_CUDA(cudaMemset(output_mask_buffer_, 0, sizeof(uint8_t) * num_keys));
 
     slab_hash_->Search(thrust::raw_pointer_cast(input_keys.data()),
-                       output_value_buffer_, output_mask_buffer_,
-                       input_keys.size());
+                       output_value_buffer_, output_mask_buffer_, num_keys);
     CHECK_CUDA(cudaDeviceSynchronize());
 
-    thrust::device_vector<Value> output_values(
-            output_value_buffer_, output_value_buffer_ + input_keys.size());
-    thrust::device_vector<uint8_t> output_masks(
-            output_mask_buffer_, output_mask_buffer_ + input_keys.size());
+    thrust::device_vector<Value> output_values(output_value_buffer_,
+                                               output_value_buffer_ + num_keys);
+    thrust::device_vector<uint8_t> output_masks(output_mask_buffer_,
+                                                output_mask_buffer_ + num_keys);
     return std::make_pair(output_values, output_masks);
 }
 

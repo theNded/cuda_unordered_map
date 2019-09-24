@@ -245,9 +245,88 @@ void TEST_COORDS(int key_size) {
     std::cout << "TEST_COORDS() passed\n";
 }
 
+void TEST_COORDS_MINK(int key_size) {
+    const int D = 8;
+    std::default_random_engine generator;
+    std::uniform_int_distribution<int> dist(-1000, 1000);
+
+    // generate raw data (a bunch of data mimicking at::Tensor)
+    std::cout << "generating data...\n";
+    std::vector<int> input_coords(key_size * D);
+    for (int i = 0; i < key_size * D; ++i) {
+      input_coords[i] = dist(generator);
+    }
+    std::cout << "data generated\n";
+
+    // convert raw data (at::Tensor) to std::vector
+    // and prepare indices
+    std::cout << "converting format...\n";
+    std::vector<Coordinate<int, D>> insert_keys(key_size);
+    std::memcpy(insert_keys.data(), input_coords.data(),
+                sizeof(int) * key_size * D);
+    std::vector<int> insert_vals(key_size);
+    std::iota(insert_vals.begin(), insert_vals.end(), 0);
+
+    // also make sure memcpy works correctly
+    for (int i = 0; i < key_size; ++i) {
+      for (int d = 0; d < D; ++d) {
+        assert(input_coords[i * D + d] == insert_keys[i][d]);
+      }
+    }
+    std::cout << "conversion finished\n";
+
+    // cpu groundtruth
+    std::cout << "generating std::unordered_map ground truth hashtable...\n";
+    std::unordered_map<Coordinate<int, D>, int, CoordinateHashFunc<int, D>> unordered_map;
+    for (int i = 0; i < key_size; ++i) {
+      unordered_map[insert_keys[i]] = insert_vals[i];
+    }
+    std::cout << "ground truth generated\n";
+
+    // gpu test
+    std::cout << "inserting to cuda::unordered_map...\n";
+    std::vector<int> cuda_insert_keys = input_coords;
+    std::vector<int> cuda_insert_vals = insert_vals;
+    cuda::unordered_map<int, int> cuda_unordered_map(key_size,
+                                                     10, 0.5, 0, D);
+    cuda_unordered_map.Insert(cuda_insert_keys, cuda_insert_vals);
+    std::cout << "insertion finished\n";
+
+    // query
+    std::cout << "generating query_data...\n";
+    std::vector<Coordinate<int, D>> query_keys(insert_keys.size());
+    for (int i = 0; i < key_size; ++i) {
+      if (i % 3 != 2) { // 2/3 is valid
+        query_keys[i] = insert_keys[i];
+      } else { // 1/3 is invalid
+        query_keys[i] = Coordinate<int, D>::random(generator, dist);
+      }
+    }
+    std::vector<int> cuda_query_keys(query_keys.size() * D);
+    std::memcpy(cuda_query_keys.data(), query_keys.data(),
+                sizeof(int) * D * query_keys.size());
+    std::cout << "query data generated\n";
+
+    std::cout << "query from cuda::unordered_map...\n";
+    auto cuda_query_results = cuda_unordered_map.Search(cuda_query_keys);
+    std::cout << "query results generated\n";
+
+    std::cout << "comparing query results against ground truth...\n";
+    for (int i = 0; i < query_keys.size(); ++i) {
+      auto iter = unordered_map.find(query_keys[i]);
+      if (iter == unordered_map.end()) {
+        assert(cuda_query_results.second[i] == 0);
+      } else {
+        assert(cuda_query_results.first[i] == iter->second);
+      }
+    }
+
+    std::cout << "TEST_COORDS_MINK() passed\n";
+}
 int main() {
+  TEST_COORDS_MINK(1000000);
   TEST_SIMPLE();
-  // TEST_6DIM_KEYS_THRUST(1000000);
-  // TEST_6DIM_KEYS_STD(1000000);
-  // TEST_COORDS(1000000);
+  TEST_6DIM_KEYS_THRUST(1000000);
+  TEST_6DIM_KEYS_STD(1000000);
+  TEST_COORDS(1000000);
 }
