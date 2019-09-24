@@ -23,11 +23,12 @@
 template <typename T>
 class MemoryAllocContext {
 public:
-    T *data_;           /* [N] */
+    uint8_t *data_;     /* [N] */
     ptr_t *heap_;       /* [N] */
     int *heap_counter_; /* [1] */
 
 public:
+    int _sizeof_T_;
     int max_capacity_;
 
 public:
@@ -65,28 +66,29 @@ public:
 
     __device__ T &extract(ptr_t ptr) {
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
-        assert(addr < max_capacity_);
+        assert(ptr < max_capacity_);
 #endif
-        return data_[ptr];
+        return *(T *)(data_ + ptr * _sizeof_T_);
     }
 
     __device__ const T &extract(ptr_t ptr) const {
 #ifdef CUDA_DEBUG_ENABLE_ASSERTION
         assert(addr < max_capacity_);
 #endif
-        return data_[ptr];
+        return *(T *)(data_ + ptr * _sizeof_T_);
     }
 
     /* Returns the real ptr that can be accessed (instead of the internal ptr)
      */
-    __device__ T *extract_ext_ptr(ptr_t ptr) { return data_ + ptr; }
+    __device__ T *extract_ext_ptr(ptr_t ptr) {
+        return (T *)(data_ + ptr * _sizeof_T_);
+    }
 };
 
 template <typename T>
 __global__ void ResetMemoryAllocKernel(MemoryAllocContext<T> ctx) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < ctx.max_capacity_) {
-        ctx.data_[i] = T(); /* This is not required. */
         ctx.heap_[i] = i;
     }
 }
@@ -95,21 +97,25 @@ template <typename T, class Alloc>
 class MemoryAlloc {
 public:
     int max_capacity_;
+    size_t _sizeof_T_;
     MemoryAllocContext<T> gpu_context_;
     std::shared_ptr<Alloc> allocator_;
 
 public:
-    MemoryAlloc(int max_capacity) {
+    MemoryAlloc(int max_capacity, size_t _sizeof_T = 0) {
         allocator_ = std::make_shared<Alloc>();
         max_capacity_ = max_capacity;
+        _sizeof_T_ = (_sizeof_T == 0) ? sizeof(T) : _sizeof_T;
+
         gpu_context_.max_capacity_ = max_capacity;
+        gpu_context_._sizeof_T_ = _sizeof_T_;
 
         gpu_context_.heap_counter_ =
                 allocator_->template allocate<int>(size_t(1));
         gpu_context_.heap_ =
                 allocator_->template allocate<ptr_t>(size_t(max_capacity_));
-        gpu_context_.data_ =
-                allocator_->template allocate<T>(size_t(max_capacity_));
+        gpu_context_.data_ = allocator_->template allocate<uint8_t>(
+                size_t(max_capacity_), _sizeof_T_);
 
         const int blocks = (max_capacity_ + 128 - 1) / 128;
         const int threads = 128;
@@ -126,7 +132,7 @@ public:
     ~MemoryAlloc() {
         allocator_->template deallocate<int>(gpu_context_.heap_counter_);
         allocator_->template deallocate<ptr_t>(gpu_context_.heap_);
-        allocator_->template deallocate<T>(gpu_context_.data_);
+        allocator_->template deallocate<uint8_t>(gpu_context_.data_);
     }
 
     std::vector<int> DownloadHeap() {
@@ -142,7 +148,7 @@ public:
         std::vector<T> ret;
         ret.resize(max_capacity_);
         CHECK_CUDA(cudaMemcpy(ret.data(), gpu_context_.data_,
-                              sizeof(T) * max_capacity_,
+                              _sizeof_T_ * max_capacity_,
                               cudaMemcpyDeviceToHost));
         return ret;
     }

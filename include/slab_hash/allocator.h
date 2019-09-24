@@ -7,7 +7,7 @@ class Allocator {
 public:
     Allocator(int device_id = 0) : device_id_(device_id) {}
     template <typename T>
-    T* allocate(size_t size) {}
+    T* allocate(size_t size, size_t _sizeof = 0) {}
 
     template <typename T>
     void deallocate(T* ptr) {}
@@ -20,9 +20,10 @@ class CudaAllocator : public Allocator {
 public:
     CudaAllocator(int device_id = 0) : Allocator(device_id) {}
     template <typename T>
-    T* allocate(size_t size) {
+    T* allocate(size_t size, size_t _sizeof = 0) {
         T* ptr;
-        CHECK_CUDA(cudaMalloc(&ptr, sizeof(T) * size));
+        _sizeof = (_sizeof == 0) ? sizeof(T) : _sizeof;
+        CHECK_CUDA(cudaMalloc(&ptr, _sizeof * size));
         return ptr;
     }
 
