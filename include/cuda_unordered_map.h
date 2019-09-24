@@ -58,7 +58,8 @@ public:
                   uint32_t keys_per_bucket = 10,
                   float expected_occupancy_per_bucket = 0.5,
                   /* CUDA device */
-                  const uint32_t device_idx = 0);
+                  const uint32_t device_idx = 0,
+                  const uint32_t key_channels = 1);
     ~unordered_map();
 
     /* Minimal output */
@@ -83,14 +84,14 @@ public:
     void Remove(Key* input_keys, int num_keys);
 
     /* Detailed output */
-    std::pair<thrust::device_vector<_Iterator<Key, Value>>,
-              thrust::device_vector<uint8_t>>
-    Insert_(thrust::device_vector<Key>& input_keys,
-            thrust::device_vector<Value>& input_values);
+    /* std::pair<thrust::device_vector<_Iterator<Key, Value>>, */
+    /*           thrust::device_vector<uint8_t>> */
+    /* Insert_(thrust::device_vector<Key>& input_keys, */
+    /*         thrust::device_vector<Value>& input_values); */
 
-    std::pair<thrust::device_vector<_Iterator<Key, Value>>,
-              thrust::device_vector<uint8_t>>
-    Search_(thrust::device_vector<Key>& input_keys);
+    /* std::pair<thrust::device_vector<_Iterator<Key, Value>>, */
+    /*           thrust::device_vector<uint8_t>> */
+    /* Search_(thrust::device_vector<Key>& input_keys); */
 
     thrust::device_vector<uint8_t> Remove_(
             thrust::device_vector<Key>& input_keys);
@@ -109,7 +110,7 @@ private:
     Value* input_value_buffer_;
     Key* output_key_buffer_;
     Value* output_value_buffer_;
-    _Iterator<Key, Value>* output_iterator_buffer_;
+    // _Iterator<Key, Value>* output_iterator_buffer_;
     uint8_t* output_mask_buffer_;
 
     std::shared_ptr<SlabHash<Key, Value, Hash, Alloc>> slab_hash_;
@@ -121,7 +122,8 @@ unordered_map<Key, Value, Hash, Alloc>::unordered_map(
         uint32_t max_keys,
         uint32_t keys_per_bucket,
         float expected_occupancy_per_bucket,
-        const uint32_t device_idx)
+        const uint32_t device_idx,
+        const uint32_t key_channels)
     : max_keys_(max_keys), cuda_device_idx_(device_idx), slab_hash_(nullptr) {
     /* Set bucket size */
     uint32_t expected_keys_per_bucket =
@@ -142,12 +144,13 @@ unordered_map<Key, Value, Hash, Alloc>::unordered_map(
     output_key_buffer_ = allocator_->template allocate<Key>(max_keys_);
     output_value_buffer_ = allocator_->template allocate<Value>(max_keys_);
     output_mask_buffer_ = allocator_->template allocate<uint8_t>(max_keys_);
-    output_iterator_buffer_ =
-            allocator_->template allocate<_Iterator<Key, Value>>(max_keys_);
+    /* output_iterator_buffer_ = */
+    /*         allocator_->template allocate<_Iterator<Key, Value>>(max_keys_);
+     */
 
     // allocate an initialize the allocator:
     slab_hash_ = std::make_shared<SlabHash<Key, Value, Hash, Alloc>>(
-            num_buckets_, max_keys_, cuda_device_idx_);
+            num_buckets_, max_keys_, cuda_device_idx_, key_channels);
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
@@ -160,8 +163,8 @@ unordered_map<Key, Value, Hash, Alloc>::~unordered_map() {
     allocator_->template deallocate<Key>(output_key_buffer_);
     allocator_->template deallocate<Value>(output_value_buffer_);
     allocator_->template deallocate<uint8_t>(output_mask_buffer_);
-    allocator_->template deallocate<_Iterator<Key, Value>>(
-            output_iterator_buffer_);
+    /* allocator_->template deallocate<_Iterator<Key, Value>>( */
+    /*         output_iterator_buffer_); */
 }
 
 template <typename Key, typename Value, typename Hash, class Alloc>
@@ -294,37 +297,38 @@ void unordered_map<Key, Value, Hash, Alloc>::Remove(Key* input_keys,
     slab_hash_->Remove(input_keys, num_keys);
 }
 
-template <typename Key, typename Value, typename Hash, class Alloc>
-std::pair<thrust::device_vector<_Iterator<Key, Value>>,
-          thrust::device_vector<uint8_t>>
-unordered_map<Key, Value, Hash, Alloc>::Search_(
-        thrust::device_vector<Key>& input_keys) {
-    assert(input_keys.size() <= max_keys_);
+/* template <typename Key, typename Value, typename Hash, class Alloc> */
+/* std::pair<thrust::device_vector<_Iterator<Key, Value>>, */
+/*           thrust::device_vector<uint8_t>> */
+/* unordered_map<Key, Value, Hash, Alloc>::Search_( */
+/*         thrust::device_vector<Key>& input_keys) { */
+/*     assert(input_keys.size() <= max_keys_); */
 
-    CHECK_CUDA(cudaSetDevice(cuda_device_idx_));
-    CHECK_CUDA(cudaMemset(output_mask_buffer_, 0,
-                          sizeof(uint8_t) * input_keys.size()));
+/*     CHECK_CUDA(cudaSetDevice(cuda_device_idx_)); */
+/*     CHECK_CUDA(cudaMemset(output_mask_buffer_, 0, */
+/*                           sizeof(uint8_t) * input_keys.size())); */
 
-    slab_hash_->Search_(thrust::raw_pointer_cast(input_keys.data()),
-                        output_iterator_buffer_, output_mask_buffer_,
-                        input_keys.size());
-    CHECK_CUDA(cudaDeviceSynchronize());
+/*     slab_hash_->Search_(thrust::raw_pointer_cast(input_keys.data()), */
+/*                         output_iterator_buffer_, output_mask_buffer_, */
+/*                         input_keys.size()); */
+/*     CHECK_CUDA(cudaDeviceSynchronize()); */
 
-    thrust::device_vector<_Iterator<Key, Value>> output_iterators(
-            output_iterator_buffer_,
-            output_iterator_buffer_ + input_keys.size());
-    thrust::device_vector<uint8_t> output_masks(
-            output_mask_buffer_, output_mask_buffer_ + input_keys.size());
-    return std::make_pair(output_iterators, output_masks);
-}
+/*     thrust::device_vector<_Iterator<Key, Value>> output_iterators( */
+/*             output_iterator_buffer_, */
+/*             output_iterator_buffer_ + input_keys.size()); */
+/*     thrust::device_vector<uint8_t> output_masks( */
+/*             output_mask_buffer_, output_mask_buffer_ + input_keys.size()); */
+/*     return std::make_pair(output_iterators, output_masks); */
+/* } */
 
-template <typename Key, typename Value, typename Hash, class Alloc>
-std::vector<int> unordered_map<Key, Value, Hash, Alloc>::CountElemsPerBucket() {
-    return slab_hash_->CountElemsPerBucket();
-}
+/* template <typename Key, typename Value, typename Hash, class Alloc> */
+/* std::vector<int> unordered_map<Key, Value, Hash,
+ * Alloc>::CountElemsPerBucket() { */
+/*     return slab_hash_->CountElemsPerBucket(); */
+/* } */
 
-template <typename Key, typename Value, typename Hash, class Alloc>
-float unordered_map<Key, Value, Hash, Alloc>::ComputeLoadFactor() {
-    return slab_hash_->ComputeLoadFactor();
-}
+/* template <typename Key, typename Value, typename Hash, class Alloc> */
+/* float unordered_map<Key, Value, Hash, Alloc>::ComputeLoadFactor() { */
+/*     return slab_hash_->ComputeLoadFactor(); */
+/* } */
 }  // namespace cuda

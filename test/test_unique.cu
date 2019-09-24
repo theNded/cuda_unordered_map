@@ -30,21 +30,21 @@ void TEST_SIMPLE() {
     // query
     thrust::device_vector<int> cuda_query_keys(std::vector<int>({1, 2, 3, 4, 5}));
     auto cuda_query_results_ro = cuda_unordered_map.Search(cuda_query_keys);
-    auto cuda_query_results_rw = cuda_unordered_map.Search_(cuda_query_keys);
+    // auto cuda_query_results_rw = cuda_unordered_map.Search_(cuda_query_keys); 
 
     for (int i = 0; i < cuda_query_keys.size(); ++i) {
       auto iter = unordered_map.find(cuda_query_keys[i]);
       if (iter == unordered_map.end()) {
         assert(cuda_query_results_ro.second[i] == 0);
-        assert(cuda_query_results_rw.second[i] == 0);
+        // assert(cuda_query_results_rw.second[i] == 0);
       } else {
         assert(cuda_query_results_ro.first[i] == iter->second);
 
-        _Iterator<int, int> iterator = cuda_query_results_rw.first[i];
-        // _Iterator == _Pair*
-        _Pair<int, int> kv = *(thrust::device_ptr<_Pair<int, int>>(iterator));
-        assert(kv.first == cuda_query_keys[i]);
-        assert(kv.second == iter->second);
+        // _Iterator<int, int> iterator = cuda_query_results_rw.first[i];
+        // // _Iterator == _Pair*
+        // _Pair<int, int> kv = *(thrust::device_ptr<_Pair<int, int>>(iterator));
+        // assert(kv.first == cuda_query_keys[i]);
+        // assert(kv.second == iter->second);
 
       }
     }
@@ -247,7 +247,7 @@ void TEST_COORDS(int key_size) {
 
 int main() {
   TEST_SIMPLE();
-  TEST_6DIM_KEYS_THRUST(1000000);
-  TEST_6DIM_KEYS_STD(1000000);
-  TEST_COORDS(1000000);
+  // TEST_6DIM_KEYS_THRUST(1000000);
+  // TEST_6DIM_KEYS_STD(1000000);
+  // TEST_COORDS(1000000);
 }

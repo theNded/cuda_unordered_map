@@ -20,7 +20,6 @@
 #include "config.h"
 
 #define _CUDA_DEBUG_ENABLE_ASSERTION
-template <typename T>
 class MemoryAllocContext {
 public:
     uint8_t *data_;     /* [N] */
@@ -64,51 +63,36 @@ public:
         heap_[index - 1] = ptr;
     }
 
-    __device__ T &extract(ptr_t ptr) {
-#ifdef CUDA_DEBUG_ENABLE_ASSERTION
-        assert(ptr < max_capacity_);
-#endif
-        return *(T *)(data_ + ptr * _sizeof_T_);
-    }
-
-    __device__ const T &extract(ptr_t ptr) const {
-#ifdef CUDA_DEBUG_ENABLE_ASSERTION
-        assert(addr < max_capacity_);
-#endif
-        return *(T *)(data_ + ptr * _sizeof_T_);
-    }
-
     /* Returns the real ptr that can be accessed (instead of the internal ptr)
      */
-    __device__ T *extract_ext_ptr(ptr_t ptr) {
-        return (T *)(data_ + ptr * _sizeof_T_);
+    __device__ uint8_t *extract_ext_ptr(ptr_t ptr) {
+        return (data_ + ptr * _sizeof_T_);
     }
 };
 
-template <typename T>
-__global__ void ResetMemoryAllocKernel(MemoryAllocContext<T> ctx) {
+__global__ void ResetMemoryAllocKernel(MemoryAllocContext ctx) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < ctx.max_capacity_) {
         ctx.heap_[i] = i;
     }
 }
 
-template <typename T, class Alloc>
+template <class Alloc>
 class MemoryAlloc {
 public:
     int max_capacity_;
     size_t _sizeof_T_;
-    MemoryAllocContext<T> gpu_context_;
+    MemoryAllocContext gpu_context_;
     std::shared_ptr<Alloc> allocator_;
 
 public:
-    MemoryAlloc(int max_capacity, size_t _sizeof_T = 0) {
+    MemoryAlloc(int max_capacity, size_t _sizeof_T) {
         allocator_ = std::make_shared<Alloc>();
         max_capacity_ = max_capacity;
-        _sizeof_T_ = (_sizeof_T == 0) ? sizeof(T) : _sizeof_T;
+        _sizeof_T_ = _sizeof_T;
 
         gpu_context_.max_capacity_ = max_capacity;
-        gpu_context_._sizeof_T_ = _sizeof_T_;
+        gpu_context_._sizeof_T_ = _sizeof_T;
 
         gpu_context_.heap_counter_ =
                 allocator_->template allocate<int>(size_t(1));
@@ -144,8 +128,8 @@ public:
         return ret;
     }
 
-    std::vector<T> DownloadValue() {
-        std::vector<T> ret;
+    std::vector<uint8_t> DownloadValue() {
+        std::vector<uint8_t> ret;
         ret.resize(max_capacity_);
         CHECK_CUDA(cudaMemcpy(ret.data(), gpu_context_.data_,
                               _sizeof_T_ * max_capacity_,

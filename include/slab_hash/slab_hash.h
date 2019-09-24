@@ -32,33 +32,40 @@ public:
     ptr_t next_slab_ptr;
 };
 
-template <typename _Key, typename _Value>
-struct _Pair {
-    _Key first;
-    _Value second;
-    __device__ __host__ _Pair(const _Key& key, const _Value& value)
-        : first(key), second(value) {}
-    __device__ __host__ _Pair() : first(), second() {}
-};
+class Pair {
+public:
+    /* Shallow wrapper of _Key[N] and _Value pairs.
+      Can ONLY be assigned from pre allocated GLOBAL data,
+      either from input or memory_alloc */
 
-template <typename _Key, typename _Value>
-__device__ __host__ _Pair<_Key, _Value> _make_pair(const _Key& key,
-                                                   const _Value& value) {
-    return _Pair<_Key, _Value>(key, value);
-}
+    __host__ __device__ Pair(uint8_t* data, uint32_t key_channels) {
+        data_ = data;
+        key_channels_ = key_channels;
+    }
+
+    template <typename _Key>
+    __device__ _Key& extract_key(int i) {
+        return *(_Key*)(data_ + sizeof(_Key) * i);
+    }
+    template <typename _Key, typename _Value>
+    __device__ _Value& extract_value() {
+        return *(_Value*)(data_ + sizeof(_Key) * key_channels_);
+    }
+
+    uint8_t* data_;
+    uint32_t key_channels_;
+};
 
 template <typename _Key, typename _Value, typename _Hash>
 class SlabHashContext;
-
-template <typename _Key, typename _Value>
-using _Iterator = _Pair<_Key, _Value>*;
 
 template <typename _Key, typename _Value, typename _Hash, class _Alloc>
 class SlabHash {
 public:
     SlabHash(const uint32_t max_bucket_count,
              const uint32_t max_keyvalue_count,
-             uint32_t device_idx);
+             uint32_t device_idx,
+             uint32_t key_channels = 1);
 
     ~SlabHash();
 
@@ -81,25 +88,25 @@ public:
      * Output iterators supports READ/WRITE: change to these output will
      * DIRECTLY change the internal hash table.
      */
-    void Insert_(_Key* input_keys,
-                 _Value* input_values,
-                 _Iterator<_Key, _Value>* output_iterators,
-                 uint8_t* output_masks,
-                 uint32_t num_keys);
-    void Search_(_Key* input_keys,
-                 _Iterator<_Key, _Value>* output_iterators,
-                 uint8_t* output_masks,
-                 uint32_t num_keys);
-    void Remove_(_Key* input_keys, uint8_t* output_masks, uint32_t num_keys);
+    /* void Insert_(_Key* input_keys, */
+    /*              _Value* input_values, */
+    /*              _Iterator<_Key, _Value>* output_iterators, */
+    /*              uint8_t* output_masks, */
+    /*              uint32_t num_keys); */
+    /* void Search_(_Key* input_keys, */
+    /*              _Iterator<_Key, _Value>* output_iterators, */
+    /*              uint8_t* output_masks, */
+    /*              uint32_t num_keys); */
+    /* void Remove_(_Key* input_keys, uint8_t* output_masks, uint32_t num_keys);
+     */
 
-    /* Parallel collect all the iterators from begin to end */
-    void GetIterators(_Iterator<_Key, _Value>* iterators,
-                      uint32_t& num_iterators);
-    /* Parallel extract keys and values from iterators */
-    void ExtractIterators(_Iterator<_Key, _Value>* iterators,
-                          _Key* keys,
-                          _Value* values,
-                          uint32_t num_iterators);
+    /* /\* Parallel collect all the iterators from begin to end *\/ */
+    /* void GetIterators(_Iterator* iterators, uint32_t& num_iterators); */
+    /* /\* Parallel extract keys and values from iterators *\/ */
+    /* void ExtractIterators(_Iterator* iterators, */
+    /*                       _Key* keys, */
+    /*                       _Value* values, */
+    /*                       uint32_t num_iterators); */
 
     /* Debug usages */
     std::vector<int> CountElemsPerBucket();
@@ -109,11 +116,12 @@ public:
 private:
     Slab* bucket_list_head_;
     uint32_t num_buckets_;
+    uint32_t key_channels_;
 
     SlabHashContext<_Key, _Value, _Hash> gpu_context_;
 
     std::shared_ptr<_Alloc> allocator_;
-    std::shared_ptr<MemoryAlloc<_Pair<_Key, _Value>, _Alloc>> pair_allocator_;
+    std::shared_ptr<MemoryAlloc<_Alloc>> pair_allocator_;
     std::shared_ptr<SlabAlloc<_Alloc>> slab_list_allocator_;
 
     uint32_t device_idx_;
@@ -137,38 +145,38 @@ __global__ void RemoveKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
                              uint32_t num_keys);
 
 /** Verbose version **/
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void Insert_Kernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        _Key* input_keys,
-        _Value* input_values,
-        _Iterator<_Key, _Value>* output_iterators,
-        uint8_t* output_masks,
-        uint32_t num_keys);
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void Search_Kernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        _Key* input_keys,
-        _Iterator<_Key, _Value>* output_iterators,
-        uint8_t* output_masks,
-        uint32_t num_keys);
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void Remove_Kernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        _Key* input_keys,
-        uint8_t* output_masks,
-        uint32_t num_keys);
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void Insert_Kernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         _Key* input_keys, */
+/*         _Value* input_values, */
+/*         _Iterator* output_iterators, */
+/*         uint8_t* output_masks, */
+/*         uint32_t num_keys); */
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void Search_Kernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         _Key* input_keys, */
+/*         _Iterator* output_iterators, */
+/*         uint8_t* output_masks, */
+/*         uint32_t num_keys); */
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void Remove_Kernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         _Key* input_keys, */
+/*         uint8_t* output_masks, */
+/*         uint32_t num_keys); */
 
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void GetIteratorsKernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        _Iterator<_Key, _Value>* output_iterators,
-        uint32_t* output_iterator_count,
-        uint32_t num_buckets);
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void CountElemsPerBucketKernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        uint32_t* bucket_elem_counts);
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void GetIteratorsKernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         _Iterator* output_iterators, */
+/*         uint32_t* output_iterator_count, */
+/*         uint32_t num_buckets); */
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void CountElemsPerBucketKernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         uint32_t* bucket_elem_counts); */
 
 /**
  * Implementation for the host class
@@ -177,10 +185,12 @@ template <typename _Key, typename _Value, typename _Hash, class _Alloc>
 SlabHash<_Key, _Value, _Hash, _Alloc>::SlabHash(
         const uint32_t max_bucket_count,
         const uint32_t max_keyvalue_count,
-        uint32_t device_idx)
+        uint32_t device_idx,
+        uint32_t key_channels)
     : num_buckets_(max_bucket_count),
       device_idx_(device_idx),
-      bucket_list_head_(nullptr) {
+      bucket_list_head_(nullptr),
+      key_channels_(key_channels) {
     int32_t device_count = 0;
     CHECK_CUDA(cudaGetDeviceCount(&device_count));
     assert(device_idx_ < device_count);
@@ -188,9 +198,8 @@ SlabHash<_Key, _Value, _Hash, _Alloc>::SlabHash(
 
     // allocate an initialize the allocator:
     allocator_ = std::make_shared<_Alloc>(device_idx);
-    pair_allocator_ =
-            std::make_shared<MemoryAlloc<_Pair<_Key, _Value>, _Alloc>>(
-                    max_keyvalue_count);
+    pair_allocator_ = std::make_shared<MemoryAlloc<_Alloc>>(
+            max_keyvalue_count, sizeof(_Key) * key_channels_ + sizeof(_Value));
     slab_list_allocator_ = std::make_shared<SlabAlloc<_Alloc>>();
 
     // allocating initial buckets:
@@ -198,7 +207,7 @@ SlabHash<_Key, _Value, _Hash, _Alloc>::SlabHash(
     CHECK_CUDA(
             cudaMemset(bucket_list_head_, 0xFF, sizeof(Slab) * num_buckets_));
 
-    gpu_context_.Setup(bucket_list_head_, num_buckets_,
+    gpu_context_.Setup(bucket_list_head_, num_buckets_, key_channels_,
                        slab_list_allocator_->getContext(),
                        pair_allocator_->gpu_context_);
 }
@@ -246,86 +255,93 @@ void SlabHash<_Key, _Value, _Hash, _Alloc>::Remove(_Key* keys,
     CHECK_CUDA(cudaGetLastError());
 }
 
-template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-void SlabHash<_Key, _Value, _Hash, _Alloc>::Insert_(
-        _Key* keys,
-        _Value* values,
-        _Iterator<_Key, _Value>* iterators,
-        uint8_t* masks,
-        uint32_t num_keys) {
-    const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    // calling the kernel for bulk build:
-    CHECK_CUDA(cudaSetDevice(device_idx_));
-    InsertKernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>(
-            gpu_context_, keys, values, iterators, masks, num_keys);
-    CHECK_CUDA(cudaDeviceSynchronize());
-    CHECK_CUDA(cudaGetLastError());
-}
+/* template <typename _Key, typename _Value, typename _Hash, class _Alloc> */
+/* void SlabHash<_Key, _Value, _Hash, _Alloc>::Insert_(_Key* keys, */
+/*                                                     _Value* values, */
+/*                                                     _Iterator* iterators, */
+/*                                                     uint8_t* masks, */
+/*                                                     uint32_t num_keys) { */
+/*     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_; */
+/*     // calling the kernel for bulk build: */
+/*     CHECK_CUDA(cudaSetDevice(device_idx_)); */
+/*     InsertKernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>( */
+/*             gpu_context_, keys, values, iterators, masks, num_keys); */
+/*     CHECK_CUDA(cudaDeviceSynchronize()); */
+/*     CHECK_CUDA(cudaGetLastError()); */
+/* } */
 
-template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-void SlabHash<_Key, _Value, _Hash, _Alloc>::Search_(
-        _Key* keys,
-        _Iterator<_Key, _Value>* iterators,
-        uint8_t* masks,
-        uint32_t num_keys) {
-    CHECK_CUDA(cudaSetDevice(device_idx_));
-    const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    Search_Kernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>(
-            gpu_context_, keys, iterators, masks, num_keys);
-    CHECK_CUDA(cudaDeviceSynchronize());
-    CHECK_CUDA(cudaGetLastError());
-}
+/* template <typename _Key, typename _Value, typename _Hash, class _Alloc> */
+/* void SlabHash<_Key, _Value, _Hash, _Alloc>::Search_(_Key* keys, */
+/*                                                     _Iterator* iterators, */
+/*                                                     uint8_t* masks, */
+/*                                                     uint32_t num_keys) { */
+/*     CHECK_CUDA(cudaSetDevice(device_idx_)); */
+/*     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_; */
+/*     Search_Kernel<_Key, _Value, _Hash><<<num_blocks, BLOCKSIZE_>>>( */
+/*             gpu_context_, keys, iterators, masks, num_keys); */
+/*     CHECK_CUDA(cudaDeviceSynchronize()); */
+/*     CHECK_CUDA(cudaGetLastError()); */
+/* } */
 
-template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-void SlabHash<_Key, _Value, _Hash, _Alloc>::Remove_(_Key* keys,
-                                                    uint8_t* masks,
-                                                    uint32_t num_keys) {
-    CHECK_CUDA(cudaSetDevice(device_idx_));
-    const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_;
-    Remove_Kernel<_Key, _Value, _Hash>
-            <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, masks, num_keys);
-    CHECK_CUDA(cudaDeviceSynchronize());
-    CHECK_CUDA(cudaGetLastError());
-}
+/* template <typename _Key, typename _Value, typename _Hash, class _Alloc> */
+/* void SlabHash<_Key, _Value, _Hash, _Alloc>::Remove_(_Key* keys, */
+/*                                                     uint8_t* masks, */
+/*                                                     uint32_t num_keys) { */
+/*     CHECK_CUDA(cudaSetDevice(device_idx_)); */
+/*     const uint32_t num_blocks = (num_keys + BLOCKSIZE_ - 1) / BLOCKSIZE_; */
+/*     Remove_Kernel<_Key, _Value, _Hash> */
+/*             <<<num_blocks, BLOCKSIZE_>>>(gpu_context_, keys, masks,
+ * num_keys); */
+/*     CHECK_CUDA(cudaDeviceSynchronize()); */
+/*     CHECK_CUDA(cudaGetLastError()); */
+/* } */
 
-/* Debug usage */
-template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-std::vector<int> SlabHash<_Key, _Value, _Hash, _Alloc>::CountElemsPerBucket() {
-    auto elems_per_bucket_buffer =
-            allocator_->template allocate<uint32_t>(num_buckets_);
+/* /\* Debug usage *\/ */
+/* template <typename _Key, typename _Value, typename _Hash, class _Alloc> */
+/* std::vector<int> SlabHash<_Key, _Value, _Hash, _Alloc>::CountElemsPerBucket()
+ * { */
+/*     auto elems_per_bucket_buffer = */
+/*             allocator_->template allocate<uint32_t>(num_buckets_); */
 
-    thrust::device_vector<uint32_t> elems_per_bucket(
-            elems_per_bucket_buffer, elems_per_bucket_buffer + num_buckets_);
-    thrust::fill(elems_per_bucket.begin(), elems_per_bucket.end(), 0);
+/*     thrust::device_vector<uint32_t> elems_per_bucket( */
+/*             elems_per_bucket_buffer, elems_per_bucket_buffer + num_buckets_);
+ */
+/*     thrust::fill(elems_per_bucket.begin(), elems_per_bucket.end(), 0); */
 
-    const uint32_t blocksize = 128;
-    const uint32_t num_blocks = (num_buckets_ * 32 + blocksize - 1) / blocksize;
-    CountElemsPerBucketKernel<_Key, _Value, _Hash><<<num_blocks, blocksize>>>(
-            gpu_context_, thrust::raw_pointer_cast(elems_per_bucket.data()));
+/*     const uint32_t blocksize = 128; */
+/*     const uint32_t num_blocks = (num_buckets_ * 32 + blocksize - 1) /
+ * blocksize; */
+/*     CountElemsPerBucketKernel<_Key, _Value, _Hash><<<num_blocks,
+ * blocksize>>>( */
+/*             gpu_context_, thrust::raw_pointer_cast(elems_per_bucket.data()));
+ */
 
-    std::vector<int> result(num_buckets_);
-    thrust::copy(elems_per_bucket.begin(), elems_per_bucket.end(),
-                 result.begin());
-    allocator_->template deallocate<uint32_t>(elems_per_bucket_buffer);
-    return std::move(result);
-}
+/*     std::vector<int> result(num_buckets_); */
+/*     thrust::copy(elems_per_bucket.begin(), elems_per_bucket.end(), */
+/*                  result.begin()); */
+/*     allocator_->template deallocate<uint32_t>(elems_per_bucket_buffer); */
+/*     return std::move(result); */
+/* } */
 
-template <typename _Key, typename _Value, typename _Hash, class _Alloc>
-double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor() {
-    auto elems_per_bucket = CountElemsPerBucket();
-    int total_elems_stored = std::accumulate(elems_per_bucket.begin(),
-                                             elems_per_bucket.end(), 0);
+/* template <typename _Key, typename _Value, typename _Hash, class _Alloc> */
+/* double SlabHash<_Key, _Value, _Hash, _Alloc>::ComputeLoadFactor() { */
+/*     auto elems_per_bucket = CountElemsPerBucket(); */
+/*     int total_elems_stored = std::accumulate(elems_per_bucket.begin(), */
+/*                                              elems_per_bucket.end(), 0); */
 
-    slab_list_allocator_->getContext() = gpu_context_.get_slab_alloc_ctx();
-    auto slabs_per_bucket = slab_list_allocator_->CountSlabsPerSuperblock();
-    int total_slabs_stored = std::accumulate(
-            slabs_per_bucket.begin(), slabs_per_bucket.end(), num_buckets_);
+/*     slab_list_allocator_->getContext() = gpu_context_.get_slab_alloc_ctx();
+ */
+/*     auto slabs_per_bucket = slab_list_allocator_->CountSlabsPerSuperblock();
+ */
+/*     int total_slabs_stored = std::accumulate( */
+/*             slabs_per_bucket.begin(), slabs_per_bucket.end(), num_buckets_);
+ */
 
-    double load_factor = double(total_elems_stored) /
-                         double(total_slabs_stored * WARP_WIDTH);
+/*     double load_factor = double(total_elems_stored) / */
+/*                          double(total_slabs_stored * WARP_WIDTH); */
 
-    return load_factor;
-}
+/*     return load_factor; */
+/* } */
 
 /**
  * Internal implementation for the device proxy:
@@ -335,39 +351,38 @@ template <typename _Key, typename _Value, typename _Hash>
 class SlabHashContext {
 public:
     SlabHashContext();
-    __host__ void Setup(
-            Slab* bucket_list_head,
-            const uint32_t num_buckets,
-            const SlabAllocContext& allocator_ctx,
-            const MemoryAllocContext<_Pair<_Key, _Value>>& pair_allocator_ctx);
+    __host__ void Setup(Slab* bucket_list_head,
+                        const uint32_t num_buckets,
+                        const uint32_t key_channels,
+                        const SlabAllocContext& allocator_ctx,
+                        const MemoryAllocContext& pair_allocator_ctx);
 
     /* Core SIMT operations, shared by both simplistic and verbose
      * interfaces */
-    __device__ _Pair<ptr_t, uint8_t> Insert(uint8_t& lane_active,
-                                            const uint32_t lane_id,
-                                            const uint32_t bucket_id,
-                                            const _Key& key,
-                                            const _Value& value);
+    __device__ thrust::pair<ptr_t, uint8_t> Insert(uint8_t& lane_active,
+                                                   const uint32_t lane_id,
+                                                   const uint32_t bucket_id,
+                                                   const _Key* key,
+                                                   const _Value& value);
 
-    __device__ _Pair<ptr_t, uint8_t> Search(uint8_t& lane_active,
-                                            const uint32_t lane_id,
-                                            const uint32_t bucket_id,
-                                            const _Key& key);
+    __device__ thrust::pair<ptr_t, uint8_t> Search(uint8_t& lane_active,
+                                                   const uint32_t lane_id,
+                                                   const uint32_t bucket_id,
+                                                   const _Key* key);
 
     __device__ uint8_t Remove(uint8_t& lane_active,
                               const uint32_t lane_id,
                               const uint32_t bucket_id,
-                              const _Key& key);
+                              const _Key* key);
 
     /* Hash function */
-    __device__ __host__ uint32_t ComputeBucket(const _Key& key) const;
+    __device__ __host__ uint32_t ComputeBucket(const _Key* key) const;
     __device__ __host__ uint32_t bucket_size() const { return num_buckets_; }
 
     __device__ __host__ SlabAllocContext& get_slab_alloc_ctx() {
         return slab_list_allocator_ctx_;
     }
-    __device__ __host__ MemoryAllocContext<_Pair<_Key, _Value>>
-    get_pair_alloc_ctx() {
+    __device__ __host__ MemoryAllocContext get_pair_alloc_ctx() {
         return pair_allocator_ctx_;
     }
 
@@ -383,10 +398,10 @@ public:
     }
 
 private:
-    __device__ __forceinline__ void WarpSyncKey(const _Key& key,
+    __device__ __forceinline__ void WarpSyncKey(const _Key* key,
                                                 const uint32_t lane_id,
-                                                _Key& ret);
-    __device__ __forceinline__ int32_t WarpFindKey(const _Key& src_key,
+                                                _Key* ret);
+    __device__ __forceinline__ int32_t WarpFindKey(const _Key* src_key,
                                                    const uint32_t lane_id,
                                                    const uint32_t unit_data);
     __device__ __forceinline__ int32_t WarpFindEmpty(const uint32_t unit_data);
@@ -396,11 +411,15 @@ private:
 
 private:
     uint32_t num_buckets_;
+
     _Hash hash_fn_;
 
     Slab* bucket_list_head_;
     SlabAllocContext slab_list_allocator_ctx_;
-    MemoryAllocContext<_Pair<_Key, _Value>> pair_allocator_ctx_;
+    MemoryAllocContext pair_allocator_ctx_;
+
+public:
+    uint32_t key_channels_;
 };
 
 /**
@@ -408,7 +427,7 @@ private:
  **/
 template <typename _Key, typename _Value, typename _Hash>
 SlabHashContext<_Key, _Value, _Hash>::SlabHashContext()
-    : num_buckets_(0), bucket_list_head_(nullptr) {
+    : num_buckets_(0), key_channels_(1), bucket_list_head_(nullptr) {
     static_assert(sizeof(Slab) == (WARP_WIDTH * sizeof(ptr_t)),
                   "Invalid slab size");
 }
@@ -417,44 +436,56 @@ template <typename _Key, typename _Value, typename _Hash>
 __host__ void SlabHashContext<_Key, _Value, _Hash>::Setup(
         Slab* bucket_list_head,
         const uint32_t num_buckets,
+        const uint32_t key_channels,
         const SlabAllocContext& allocator_ctx,
-        const MemoryAllocContext<_Pair<_Key, _Value>>& pair_allocator_ctx) {
+        const MemoryAllocContext& pair_allocator_ctx) {
     bucket_list_head_ = bucket_list_head;
 
     num_buckets_ = num_buckets;
+    key_channels_ = key_channels;
     slab_list_allocator_ctx_ = allocator_ctx;
     pair_allocator_ctx_ = pair_allocator_ctx;
 }
 
 template <typename _Key, typename _Value, typename _Hash>
 __device__ __host__ __forceinline__ uint32_t
-SlabHashContext<_Key, _Value, _Hash>::ComputeBucket(const _Key& key) const {
-    return hash_fn_(key) % num_buckets_;
+SlabHashContext<_Key, _Value, _Hash>::ComputeBucket(const _Key* key) const {
+    uint32_t ret = 0;
+    for (int i = 0; i < key_channels_; ++i) {
+        ret ^= hash_fn_(key[i]);
+    }
+    return ret % num_buckets_;
 }
 
 template <typename _Key, typename _Value, typename _Hash>
 __device__ __forceinline__ void
-SlabHashContext<_Key, _Value, _Hash>::WarpSyncKey(const _Key& key,
+SlabHashContext<_Key, _Value, _Hash>::WarpSyncKey(const _Key* key,
                                                   const uint32_t lane_id,
-                                                  _Key& ret) {
-    const int chunks = sizeof(_Key) / sizeof(int);
+                                                  _Key* ret) {
+    const int chunks = sizeof(_Key) * key_channels_ / sizeof(int);
 #pragma unroll 1
     for (size_t i = 0; i < chunks; ++i) {
-        ((int*)(&ret))[i] = __shfl_sync(ACTIVE_LANES_MASK, ((int*)(&key))[i],
-                                        lane_id, WARP_WIDTH);
+        int val = key ? ((int*)(&key[0]))[i] : -1;
+        ((int*)(ret))[i] =
+                __shfl_sync(ACTIVE_LANES_MASK, val, lane_id, WARP_WIDTH);
     }
 }
 
 template <typename _Key, typename _Value, typename _Hash>
 __device__ int32_t SlabHashContext<_Key, _Value, _Hash>::WarpFindKey(
-        const _Key& key, const uint32_t lane_id, const ptr_t ptr) {
+        const _Key* key, const uint32_t lane_id, const ptr_t ptr) {
     uint8_t is_lane_found =
             /* select key lanes */
             ((1 << lane_id) & PAIR_PTR_LANES_MASK)
             /* validate key addrs */
-            && (ptr != EMPTY_PAIR_PTR)
-            /* find keys in memory heap */
-            && pair_allocator_ctx_.extract(ptr).first == key;
+            && (ptr != EMPTY_PAIR_PTR);
+
+    /* find keys in memory heap */
+    Pair kv_pair(pair_allocator_ctx_.extract_ext_ptr(ptr), key_channels_);
+    for (int i = 0; i < key_channels_; ++i) {
+        is_lane_found =
+                is_lane_found && (kv_pair.extract_key<_Key>(i) == key[i]);
+    }
 
     return __ffs(__ballot_sync(PAIR_PTR_LANES_MASK, is_lane_found)) - 1;
 }
@@ -480,11 +511,11 @@ __device__ __forceinline__ void SlabHashContext<_Key, _Value, _Hash>::FreeSlab(
 }
 
 template <typename _Key, typename _Value, typename _Hash>
-__device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Search(
-        uint8_t& to_search,
-        const uint32_t lane_id,
-        const uint32_t bucket_id,
-        const _Key& query_key) {
+__device__ thrust::pair<ptr_t, uint8_t>
+SlabHashContext<_Key, _Value, _Hash>::Search(uint8_t& to_search,
+                                             const uint32_t lane_id,
+                                             const uint32_t bucket_id,
+                                             const _Key* query_key) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = work_queue;
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
@@ -502,7 +533,8 @@ __device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Search(
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANES_MASK, bucket_id, src_lane, WARP_WIDTH);
 
-        _Key src_key;
+        // WARNING! temporarily allocate large instant memory
+        _Key src_key[16];
         WarpSyncKey(query_key, src_lane, src_key);
 
         /* Each lane in the warp reads a uint in the slab in parallel */
@@ -513,7 +545,6 @@ __device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Search(
                                                          lane_id));
 
         int32_t lane_found = WarpFindKey(src_key, lane_id, unit_data);
-
         /** 1. Found in this slab, SUCCEED **/
         if (lane_found >= 0) {
             /* broadcast found value */
@@ -549,7 +580,7 @@ __device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Search(
         prev_work_queue = work_queue;
     }
 
-    return _make_pair(iterator, mask);
+    return thrust::make_pair(iterator, mask);
 }
 
 /*
@@ -558,12 +589,12 @@ __device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Search(
  * WE DO NOT ALLOW DUPLICATE KEYS
  */
 template <typename _Key, typename _Value, typename _Hash>
-__device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Insert(
-        uint8_t& to_be_inserted,
-        const uint32_t lane_id,
-        const uint32_t bucket_id,
-        const _Key& key,
-        const _Value& value) {
+__device__ thrust::pair<ptr_t, uint8_t>
+SlabHashContext<_Key, _Value, _Hash>::Insert(uint8_t& to_be_inserted,
+                                             const uint32_t lane_id,
+                                             const uint32_t bucket_id,
+                                             const _Key* key,
+                                             const _Value& value) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = 0;
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
@@ -576,8 +607,13 @@ __device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Insert(
     int prealloc_pair_internal_ptr = EMPTY_PAIR_PTR;
     if (to_be_inserted) {
         prealloc_pair_internal_ptr = pair_allocator_ctx_.Allocate();
-        pair_allocator_ctx_.extract(prealloc_pair_internal_ptr) =
-                _make_pair(key, value);
+        Pair kv_pair(
+                pair_allocator_ctx_.extract_ext_ptr(prealloc_pair_internal_ptr),
+                key_channels_);
+        for (int i = 0; i < key_channels_; ++i) {
+            kv_pair.extract_key<_Key>(i) = key[i];
+            kv_pair.extract_value<_Key, _Value>() = value;
+        }
     }
 
     /** > Loop when we have active lanes **/
@@ -589,7 +625,8 @@ __device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Insert(
         uint32_t src_lane = __ffs(work_queue) - 1;
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANES_MASK, bucket_id, src_lane, WARP_WIDTH);
-        _Key src_key;
+
+        _Key src_key[16];
         WarpSyncKey(key, src_lane, src_key);
 
         /* Each lane in the warp reads a uint in the slab */
@@ -684,7 +721,7 @@ __device__ _Pair<ptr_t, uint8_t> SlabHashContext<_Key, _Value, _Hash>::Insert(
         prev_work_queue = work_queue;
     }
 
-    return _make_pair(iterator, mask);
+    return thrust::make_pair(iterator, mask);
 }
 
 template <typename _Key, typename _Value, typename _Hash>
@@ -692,7 +729,7 @@ __device__ uint8_t
 SlabHashContext<_Key, _Value, _Hash>::Remove(uint8_t& to_be_deleted,
                                              const uint32_t lane_id,
                                              const uint32_t bucket_id,
-                                             const _Key& key) {
+                                             const _Key* key) {
     uint32_t work_queue = 0;
     uint32_t prev_work_queue = 0;
     uint32_t curr_slab_ptr = HEAD_SLAB_PTR;
@@ -709,7 +746,7 @@ SlabHashContext<_Key, _Value, _Hash>::Remove(uint8_t& to_be_deleted,
         uint32_t src_bucket =
                 __shfl_sync(ACTIVE_LANES_MASK, bucket_id, src_lane, WARP_WIDTH);
 
-        _Key src_key;
+        _Key src_key[16];
         WarpSyncKey(key, src_lane, src_key);
 
         const uint32_t unit_data =
@@ -782,24 +819,28 @@ __global__ void SearchKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
 
     uint8_t lane_active = false;
     uint32_t bucket_id = 0;
-    _Key key;
+    _Key* key = NULL;
 
     if (tid < num_queries) {
         lane_active = true;
-        key = keys[tid];
+        key = keys + tid * slab_hash_ctx.key_channels_;
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
-    _Pair<ptr_t, uint8_t> result =
+    thrust::pair<ptr_t, uint8_t> result =
             slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key);
 
     if (tid < num_queries) {
         uint8_t found = result.second;
         founds[tid] = found;
-        values[tid] = found ? slab_hash_ctx.get_pair_alloc_ctx()
-                                      .extract(result.first)
-                                      .second
-                            : _Value(0);
+        values[tid] = _Value(0);
+        if (found) {
+            Pair kv_pair =
+                    Pair(slab_hash_ctx.get_pair_alloc_ctx().extract_ext_ptr(
+                                 result.first),
+                         slab_hash_ctx.key_channels_);
+            values[tid] = kv_pair.extract_value<_Key, _Value>();
+        }
     }
 }
 
@@ -819,12 +860,12 @@ __global__ void InsertKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
 
     uint8_t lane_active = false;
     uint32_t bucket_id = 0;
-    _Key key;
+    _Key* key = NULL;
     _Value value;
 
     if (tid < num_keys) {
         lane_active = true;
-        key = keys[tid];
+        key = keys + tid * slab_hash_ctx.key_channels_;
         value = values[tid];
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
@@ -847,221 +888,230 @@ __global__ void RemoveKernel(SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
 
     uint8_t lane_active = false;
     uint32_t bucket_id = 0;
-    _Key key;
+    _Key* key;
 
     if (tid < num_keys) {
         lane_active = true;
-        key = keys[tid];
+        key = keys + tid * slab_hash_ctx.key_channels_;
         bucket_id = slab_hash_ctx.ComputeBucket(key);
     }
 
     slab_hash_ctx.Remove(lane_active, lane_id, bucket_id, key);
 }
 
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void Search_Kernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        _Key* keys,
-        _Iterator<_Key, _Value>* iterators,
-        uint8_t* masks,
-        uint32_t num_queries) {
-    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t lane_id = threadIdx.x & 0x1F;
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void Search_Kernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         _Key* keys, */
+/*         _Iterator<_Key, _Value>* iterators, */
+/*         uint8_t* masks, */
+/*         uint32_t num_queries) { */
+/*     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x; */
+/*     uint32_t lane_id = threadIdx.x & 0x1F; */
 
-    /* This warp is idle */
-    if ((tid - lane_id) >= num_queries) {
-        return;
-    }
+/*     /\* This warp is idle *\/ */
+/*     if ((tid - lane_id) >= num_queries) { */
+/*         return; */
+/*     } */
 
-    /* Initialize the memory allocator on each warp */
-    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
+/*     /\* Initialize the memory allocator on each warp *\/ */
+/*     slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id); */
 
-    uint8_t lane_active = false;
-    uint32_t bucket_id = 0;
-    _Key key;
+/*     uint8_t lane_active = false; */
+/*     uint32_t bucket_id = 0; */
+/*     _Key key; */
 
-    if (tid < num_queries) {
-        lane_active = true;
-        key = keys[tid];
-        bucket_id = slab_hash_ctx.ComputeBucket(key);
-    }
+/*     if (tid < num_queries) { */
+/*         lane_active = true; */
+/*         key = keys[tid]; */
+/*         bucket_id = slab_hash_ctx.ComputeBucket(key); */
+/*     } */
 
-    _Pair<ptr_t, uint8_t> result =
-            slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key);
+/*     _Pair<ptr_t, uint8_t> result = */
+/*             slab_hash_ctx.Search(lane_active, lane_id, bucket_id, key); */
 
-    if (tid < num_queries) {
-        iterators[tid] = slab_hash_ctx.get_pair_alloc_ctx().extract_ext_ptr(
-                result.first);
-        masks[tid] = result.second;
-    }
-}
-
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void Insert_Kernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        _Key* keys,
-        _Value* values,
-        _Iterator<_Key, _Value>* iterators,
-        uint8_t* masks,
-        uint32_t num_keys) {
-    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t lane_id = threadIdx.x & 0x1F;
-
-    if ((tid - lane_id) >= num_keys) {
-        return;
-    }
-
-    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
-
-    uint8_t lane_active = false;
-    uint32_t bucket_id = 0;
-    _Key key;
-    _Value value;
-
-    if (tid < num_keys) {
-        lane_active = true;
-        key = keys[tid];
-        value = values[tid];
-        bucket_id = slab_hash_ctx.ComputeBucket(key);
-    }
-
-    _Pair<ptr_t, uint8_t> result =
-            slab_hash_ctx.Insert(lane_active, lane_id, bucket_id, key, value);
-
-    if (tid < num_keys) {
-        iterators[tid] = slab_hash_ctx.get_pair_alloc_ctx().extract_ext_ptr(
-                result.first);
-        masks[tid] = result.second;
-    }
-}
-
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void Remove_Kernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        _Key* keys,
-        uint8_t* masks,
-        uint32_t num_keys) {
-    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t lane_id = threadIdx.x & 0x1F;
-
-    if ((tid - lane_id) >= num_keys) {
-        return;
-    }
-
-    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
-
-    uint8_t lane_active = false;
-    uint32_t bucket_id = 0;
-    _Key key;
-
-    if (tid < num_keys) {
-        lane_active = true;
-        key = keys[tid];
-        bucket_id = slab_hash_ctx.ComputeBucket(key);
-    }
-
-    uint8_t success =
-            slab_hash_ctx.Remove(lane_active, lane_id, bucket_id, key);
-
-    if (tid < num_keys) {
-        masks[tid] = success;
-    }
-}
-
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void GetIteratorsKernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        ptr_t* iterators,
-        uint32_t* iterator_count,
-        uint32_t num_buckets) {
-    // global warp ID
-    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t wid = tid >> 5;
-    // assigning a warp per bucket
-    if (wid >= num_buckets) {
-        return;
-    }
-
-    /* uint32_t lane_id = threadIdx.x & 0x1F; */
-
-    /* // initializing the memory allocator on each warp: */
-    /* slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id); */
-
-    /* uint32_t src_unit_data = */
-    /*         *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id); */
-    /* uint32_t active_mask = */
-    /*         __ballot_sync(PAIR_PTR_LANES_MASK, src_unit_data !=
-     * EMPTY_PAIR_PTR); */
-    /* int leader = __ffs(active_mask) - 1; */
-    /* uint32_t count = __popc(active_mask); */
-    /* uint32_t rank = __popc(active_mask & __lanemask_lt()); */
-    /* uint32_t prev_count; */
-    /* if (rank == 0) { */
-    /*     prev_count = atomicAdd(iterator_count, count); */
-    /* } */
-    /* prev_count = __shfl_sync(active_mask, prev_count, leader); */
-
-    /* if (src_unit_data != EMPTY_PAIR_PTR) { */
-    /*     iterators[prev_count + rank] = src_unit_data; */
-    /* } */
-
-    /* uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32); */
-    /* while (next != EMPTY_SLAB_PTR) { */
-    /*     src_unit_data = */
-    /*             *slab_hash_ctx.get_unit_ptr_from_list_nodes(next,
-     * lane_id);
-     */
-    /*     count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK, */
-    /*                                   src_unit_data != EMPTY_PAIR_PTR));
-     */
-    /*     next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32); */
-    /* } */
-    /* // writing back the results: */
-    /* if (lane_id == 0) { */
-    /* } */
-}
-
-/*
- * This kernel can be used to compute total number of elements within each
- * bucket. The final results per bucket is stored in d_count_result array
+/*     if (tid < num_queries) { */
+/*         iterators[tid] = slab_hash_ctx.get_pair_alloc_ctx().extract_ext_ptr(
  */
-template <typename _Key, typename _Value, typename _Hash>
-__global__ void CountElemsPerBucketKernel(
-        SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx,
-        uint32_t* bucket_elem_counts) {
-    uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    uint32_t lane_id = threadIdx.x & 0x1F;
+/*                 result.first); */
+/*         masks[tid] = result.second; */
+/*     } */
+/* } */
 
-    // assigning a warp per bucket
-    uint32_t wid = tid >> 5;
-    if (wid >= slab_hash_ctx.bucket_size()) {
-        return;
-    }
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void Insert_Kernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         _Key* keys, */
+/*         _Value* values, */
+/*         _Iterator<_Key, _Value>* iterators, */
+/*         uint8_t* masks, */
+/*         uint32_t num_keys) { */
+/*     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x; */
+/*     uint32_t lane_id = threadIdx.x & 0x1F; */
 
-    slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id);
+/*     if ((tid - lane_id) >= num_keys) { */
+/*         return; */
+/*     } */
 
-    uint32_t count = 0;
+/*     slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id); */
 
-    // count head node
-    uint32_t src_unit_data =
-            *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id);
-    count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK,
-                                  src_unit_data != EMPTY_PAIR_PTR));
-    ptr_t next = __shfl_sync(ACTIVE_LANES_MASK, src_unit_data,
-                             NEXT_SLAB_PTR_LANE, WARP_WIDTH);
+/*     uint8_t lane_active = false; */
+/*     uint32_t bucket_id = 0; */
+/*     _Key key; */
+/*     _Value value; */
 
-    // count following nodes
-    while (next != EMPTY_SLAB_PTR) {
-        src_unit_data =
-                *slab_hash_ctx.get_unit_ptr_from_list_nodes(next, lane_id);
-        count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK,
-                                      src_unit_data != EMPTY_PAIR_PTR));
-        next = __shfl_sync(ACTIVE_LANES_MASK, src_unit_data, NEXT_SLAB_PTR_LANE,
-                           WARP_WIDTH);
-    }
+/*     if (tid < num_keys) { */
+/*         lane_active = true; */
+/*         key = keys[tid]; */
+/*         value = values[tid]; */
+/*         bucket_id = slab_hash_ctx.ComputeBucket(key); */
+/*     } */
 
-    // write back the results:
-    if (lane_id == 0) {
-        bucket_elem_counts[wid] = count;
-    }
-}
+/*     _Pair<ptr_t, uint8_t> result = */
+/*             slab_hash_ctx.Insert(lane_active, lane_id, bucket_id, key,
+ * value); */
+
+/*     if (tid < num_keys) { */
+/*         iterators[tid] = slab_hash_ctx.get_pair_alloc_ctx().extract_ext_ptr(
+ */
+/*                 result.first); */
+/*         masks[tid] = result.second; */
+/*     } */
+/* } */
+
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void Remove_Kernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         _Key* keys, */
+/*         uint8_t* masks, */
+/*         uint32_t num_keys) { */
+/*     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x; */
+/*     uint32_t lane_id = threadIdx.x & 0x1F; */
+
+/*     if ((tid - lane_id) >= num_keys) { */
+/*         return; */
+/*     } */
+
+/*     slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id); */
+
+/*     uint8_t lane_active = false; */
+/*     uint32_t bucket_id = 0; */
+/*     _Key key; */
+
+/*     if (tid < num_keys) { */
+/*         lane_active = true; */
+/*         key = keys[tid]; */
+/*         bucket_id = slab_hash_ctx.ComputeBucket(key); */
+/*     } */
+
+/*     uint8_t success = */
+/*             slab_hash_ctx.Remove(lane_active, lane_id, bucket_id, key); */
+
+/*     if (tid < num_keys) { */
+/*         masks[tid] = success; */
+/*     } */
+/* } */
+
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void GetIteratorsKernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         ptr_t* iterators, */
+/*         uint32_t* iterator_count, */
+/*         uint32_t num_buckets) { */
+/*     // global warp ID */
+/*     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x; */
+/*     uint32_t wid = tid >> 5; */
+/*     // assigning a warp per bucket */
+/*     if (wid >= num_buckets) { */
+/*         return; */
+/*     } */
+
+/*     /\* uint32_t lane_id = threadIdx.x & 0x1F; *\/ */
+
+/*     /\* // initializing the memory allocator on each warp: *\/ */
+/*     /\* slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id); *\/ */
+
+/*     /\* uint32_t src_unit_data = *\/ */
+/*     /\*         *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id); *\/
+ */
+/*     /\* uint32_t active_mask = *\/ */
+/*     /\*         __ballot_sync(PAIR_PTR_LANES_MASK, src_unit_data != */
+/*      * EMPTY_PAIR_PTR); *\/ */
+/*     /\* int leader = __ffs(active_mask) - 1; *\/ */
+/*     /\* uint32_t count = __popc(active_mask); *\/ */
+/*     /\* uint32_t rank = __popc(active_mask & __lanemask_lt()); *\/ */
+/*     /\* uint32_t prev_count; *\/ */
+/*     /\* if (rank == 0) { *\/ */
+/*     /\*     prev_count = atomicAdd(iterator_count, count); *\/ */
+/*     /\* } *\/ */
+/*     /\* prev_count = __shfl_sync(active_mask, prev_count, leader); *\/ */
+
+/*     /\* if (src_unit_data != EMPTY_PAIR_PTR) { *\/ */
+/*     /\*     iterators[prev_count + rank] = src_unit_data; *\/ */
+/*     /\* } *\/ */
+
+/*     /\* uint32_t next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32); *\/
+ */
+/*     /\* while (next != EMPTY_SLAB_PTR) { *\/ */
+/*     /\*     src_unit_data = *\/ */
+/*     /\*             *slab_hash_ctx.get_unit_ptr_from_list_nodes(next, */
+/*      * lane_id); */
+/*      *\/ */
+/*     /\*     count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK, *\/ */
+/*     /\*                                   src_unit_data != EMPTY_PAIR_PTR));
+ */
+/*      *\/ */
+/*     /\*     next = __shfl_sync(0xFFFFFFFF, src_unit_data, 31, 32); *\/ */
+/*     /\* } *\/ */
+/*     /\* // writing back the results: *\/ */
+/*     /\* if (lane_id == 0) { *\/ */
+/*     /\* } *\/ */
+/* } */
+
+/* /\* */
+/*  * This kernel can be used to compute total number of elements within each */
+/*  * bucket. The final results per bucket is stored in d_count_result array */
+/*  *\/ */
+/* template <typename _Key, typename _Value, typename _Hash> */
+/* __global__ void CountElemsPerBucketKernel( */
+/*         SlabHashContext<_Key, _Value, _Hash> slab_hash_ctx, */
+/*         uint32_t* bucket_elem_counts) { */
+/*     uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x; */
+/*     uint32_t lane_id = threadIdx.x & 0x1F; */
+
+/*     // assigning a warp per bucket */
+/*     uint32_t wid = tid >> 5; */
+/*     if (wid >= slab_hash_ctx.bucket_size()) { */
+/*         return; */
+/*     } */
+
+/*     slab_hash_ctx.get_slab_alloc_ctx().Init(tid, lane_id); */
+
+/*     uint32_t count = 0; */
+
+/*     // count head node */
+/*     uint32_t src_unit_data = */
+/*             *slab_hash_ctx.get_unit_ptr_from_list_head(wid, lane_id); */
+/*     count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK, */
+/*                                   src_unit_data != EMPTY_PAIR_PTR)); */
+/*     ptr_t next = __shfl_sync(ACTIVE_LANES_MASK, src_unit_data, */
+/*                              NEXT_SLAB_PTR_LANE, WARP_WIDTH); */
+
+/*     // count following nodes */
+/*     while (next != EMPTY_SLAB_PTR) { */
+/*         src_unit_data = */
+/*                 *slab_hash_ctx.get_unit_ptr_from_list_nodes(next, lane_id);
+ */
+/*         count += __popc(__ballot_sync(PAIR_PTR_LANES_MASK, */
+/*                                       src_unit_data != EMPTY_PAIR_PTR)); */
+/*         next = __shfl_sync(ACTIVE_LANES_MASK, src_unit_data,
+ * NEXT_SLAB_PTR_LANE, */
+/*                            WARP_WIDTH); */
+/*     } */
+
+/*     // write back the results: */
+/*     if (lane_id == 0) { */
+/*         bucket_elem_counts[wid] = count; */
+/*     } */
+/* } */
+/*  */
